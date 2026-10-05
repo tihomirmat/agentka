@@ -1,0 +1,192 @@
+/*
+ * Design tokens — the only file in the project that may contain colour literals.
+ *
+ * Shape (do not change it, the hosted preview depends on it):
+ *   1. :root                                  every token, light values
+ *   2. @media dark → :root:not([data-theme="light"])   same names, dark values
+ *   3. :root[data-theme="dark"]               the same dark values again
+ *
+ * Neutrals are cool greys pulled slightly toward petrol (hue ≈ 195°), so they
+ * sit next to the one accent without looking like a default grey ramp.
+ */
+
+:root {
+  /* ---- Surfaces ---- */
+  --bg: #f3f6f6; /* page background, sidebar */
+  --surface: #ffffff; /* cards, inputs, menus, dialogs */
+  --surface-2: #eaeff0; /* quiet fill: table head, hover, code */
+  --surface-3: #dbe3e5; /* stronger fill: tracks, pressed, skeleton */
+  --raised: #ffffff; /* things that float: menus, dialogs, toasts */
+  --raised-hover: #eaeff0; /* highlighted row inside a floating thing */
+
+  /* ---- Lines ---- */
+  --border: #d3dcde;
+  --border-strong: #81949a; /* control outlines (≥ 3:1 on --surface) */
+
+  /* ---- Text ---- */
+  --fg: #0e1d22;
+  --fg-muted: #43565d; /* secondary text */
+  --fg-subtle: #586a71; /* hints, meta, placeholders (still ≥ 4.5:1 on --surface) */
+
+  /* ---- Accent: deep petrol blue, the only brand colour ---- */
+  --accent: #0a6c8f;
+  --accent-hover: #08597a;
+  --accent-fg: #ffffff; /* text on --accent */
+  --accent-soft: #e0eff4; /* selected rows, active nav, soft badges */
+  --accent-soft-fg: #074e68; /* text on --accent-soft */
+
+  /* ---- Semantic colours (state only, never decoration) ---- */
+  --success: #1c7549;
+  --success-soft: #e2f2e9;
+  --warning: #8a5a06;
+  --warning-soft: #faefd6;
+  --danger: #b02f28;
+  --danger-hover: #93241f;
+  --danger-fg: #ffffff; /* text on --danger */
+  --danger-soft: #fae6e4;
+  --info: #35579c;
+  --info-soft: #e5ecf8;
+
+  /* ---- Inverse (tooltips, the admin strip) ---- */
+  --inverse: #10242b;
+  --inverse-fg: #eef3f4;
+
+  /* ---- Text on the customer's own widget colour (same in both themes) ---- */
+  --widget-fg: #ffffff;
+
+  /* ---- Focus and overlay ---- */
+  --ring: #1487b0;
+  --overlay: rgba(14, 29, 34, 0.48);
+
+  /* ---- Elevation: only for things that float above the page ---- */
+  --shadow-xs: 0 1px 2px rgba(14, 29, 34, 0.06);
+  --shadow-md: 0 6px 20px -6px rgba(14, 29, 34, 0.18), 0 2px 6px -2px rgba(14, 29, 34, 0.08);
+  --shadow-lg: 0 24px 56px -16px rgba(14, 29, 34, 0.3), 0 6px 16px -6px rgba(14, 29, 34, 0.12);
+
+  /* ---- Type families ---- */
+  --font-display: 'Bricolage Grotesque', 'Instrument Sans', 'Segoe UI', 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-sans: 'Instrument Sans', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
+    sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+
+  /* ---- Type scale (size / line-height). Use the Tailwind names: text-xs … text-4xl ---- */
+  --text-xs: 0.75rem; /* 12  meta, table head, chips */
+  --leading-xs: 1rem;
+  --text-sm: 0.8125rem; /* 13  hints, secondary UI */
+  --leading-sm: 1.25rem;
+  --text-base: 0.9375rem; /* 15  body and controls */
+  --leading-base: 1.5rem;
+  --text-md: 1rem; /* 16  card titles, lead-in text */
+  --leading-md: 1.5rem;
+  --text-lg: 1.125rem; /* 18  section titles */
+  --leading-lg: 1.625rem;
+  --text-xl: 1.375rem; /* 22  page titles in the app */
+  --leading-xl: 1.75rem;
+  --text-2xl: 1.75rem; /* 28  stat values, public sub-headlines */
+  --leading-2xl: 2.125rem;
+  --text-3xl: clamp(1.75rem, 1.3rem + 2vw, 2.375rem); /* public section headlines */
+  --leading-3xl: 1.15;
+  --text-4xl: clamp(2.125rem, 1.3rem + 4vw, 3.5rem); /* landing hero only */
+  --leading-4xl: 1.05;
+
+  /* ---- Shape and rhythm ---- */
+  --radius-sm: 4px; /* chips inside controls, checkbox */
+  --radius: 6px; /* buttons, inputs, menus items */
+  --radius-lg: 10px; /* cards, dialogs, menus */
+  --gutter: 1rem; /* side padding of every page; grows on wide screens */
+}
+
+@media (min-width: 768px) {
+  :root {
+    --gutter: 1.5rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --gutter: 2rem;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0c1417;
+    --surface: #121c20;
+    --surface-2: #19262b;
+    --surface-3: #233339;
+    --raised: #19262b;
+    --raised-hover: #25363d;
+    --border: #25353b;
+    --border-strong: #586e76;
+    --fg: #e7eef0;
+    --fg-muted: #a9babf;
+    --fg-subtle: #82969c;
+    --accent: #56b0cf;
+    --accent-hover: #74c1dc;
+    --accent-fg: #062029;
+    --accent-soft: #11323e;
+    --accent-soft-fg: #9fd5e8;
+    --success: #5fc391;
+    --success-soft: #112e1f;
+    --warning: #e2b25c;
+    --warning-soft: #33270f;
+    --danger: #f08a82;
+    --danger-hover: #f5a59f;
+    --danger-fg: #2c0b09;
+    --danger-soft: #3a1a18;
+    --info: #8fb1ec;
+    --info-soft: #17253f;
+    --inverse: #e7eef0;
+    --inverse-fg: #0e1d22;
+    --ring: #6cc3e0;
+    --overlay: rgba(3, 8, 10, 0.66);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 8px 24px -6px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 24px 56px -12px rgba(0, 0, 0, 0.72), 0 6px 16px -6px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0c1417;
+  --surface: #121c20;
+  --surface-2: #19262b;
+  --surface-3: #233339;
+  --raised: #19262b;
+  --raised-hover: #25363d;
+  --border: #25353b;
+  --border-strong: #586e76;
+  --fg: #e7eef0;
+  --fg-muted: #a9babf;
+  --fg-subtle: #82969c;
+  --accent: #56b0cf;
+  --accent-hover: #74c1dc;
+  --accent-fg: #062029;
+  --accent-soft: #11323e;
+  --accent-soft-fg: #9fd5e8;
+  --success: #5fc391;
+  --success-soft: #112e1f;
+  --warning: #e2b25c;
+  --warning-soft: #33270f;
+  --danger: #f08a82;
+  --danger-hover: #f5a59f;
+  --danger-fg: #2c0b09;
+  --danger-soft: #3a1a18;
+  --info: #8fb1ec;
+  --info-soft: #17253f;
+  --inverse: #e7eef0;
+  --inverse-fg: #0e1d22;
+  --ring: #6cc3e0;
+  --overlay: rgba(3, 8, 10, 0.66);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px -6px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 24px 56px -12px rgba(0, 0, 0, 0.72), 0 6px 16px -6px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
