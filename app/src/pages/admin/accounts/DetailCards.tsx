@@ -122,16 +122,10 @@ const OUTCOMES: { key: ConversationOutcome; label: string }[] = [
   { key: 'booking', label: 'Rezervacije' },
 ];
 
-/**
- * Counts only. The API also returns the transcripts and the visitors' contact details of the
- * latest conversations; this card reads nothing but the `outcome` of each, on purpose.
- */
+/** Counts only: the API returns numbers for the current period, never a conversation. */
 export function ActivityCard({ detail }: { detail: AdminAccountDetail }) {
-  const recent = detail.recent_conversations;
-  const counts = OUTCOMES.map(({ key, label }) => ({
-    label,
-    n: recent.filter((c) => c.outcome === key).length,
-  }));
+  const inPeriod = detail.period.conversations;
+  const counts = OUTCOMES.map(({ key, label }) => ({ label, n: inPeriod.by_outcome[key] }));
 
   return (
     <Card>
@@ -148,14 +142,12 @@ export function ActivityCard({ detail }: { detail: AdminAccountDetail }) {
         />
         <div className="min-w-0">
           <p className="text-sm text-fg-subtle">
-            {recent.length > 0
-              ? `Izid zadnjih pogovorov (${recent.length} od ${formatNumber(detail.conversations_total)})`
-              : 'Izid pogovorov'}
+            {inPeriod.total > 0 ? `Izid pogovorov v tem obdobju (${formatNumber(inPeriod.total)})` : 'Izid pogovorov v tem obdobju'}
           </p>
           <dl className="mt-1.5 grid grid-cols-3 gap-3">
             {counts.map((c) => (
               <div key={c.label} className="min-w-0 rounded border border-border px-3 py-2">
-                <dd className="nums font-display text-xl font-semibold text-fg">{recent.length > 0 ? c.n : MUTED}</dd>
+                <dd className="nums font-display text-xl font-semibold text-fg">{inPeriod.total > 0 ? c.n : MUTED}</dd>
                 <dt className="truncate text-sm text-fg-muted">{c.label}</dt>
               </div>
             ))}
@@ -194,7 +186,9 @@ export function ErrorsCard({ detail }: { detail: AdminAccountDetail }) {
               key={`${error.at}-${i}`}
               className="flex min-w-0 flex-col gap-0.5 border-b border-border px-4 py-3 last:border-b-0 sm:flex-row sm:gap-6 sm:px-5"
             >
-              <span className="nums shrink-0 text-sm text-fg-subtle sm:w-44 sm:pt-px">{formatDateTime(error.at)}</span>
+              <span className="nums shrink-0 text-sm text-fg-subtle sm:w-44 sm:pt-px">
+                {error.at ? formatDateTime(error.at) : 'Čas ni znan'}
+              </span>
               <span className="min-w-0 break-words text-base text-fg">{hideAddresses(error.text)}</span>
             </li>
           ))}

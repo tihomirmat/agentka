@@ -12,16 +12,26 @@
  */
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
 import { BRAND } from '../brand';
-import { LEAD_STATUS } from './labels';
+import { formatNumber } from './format';
+import { LEAD_STATUS, PAUSED_BY } from './labels';
 import {
+  assistantNoun,
+  DEFAULT_OWNER_TEMPLATE,
+  DEFAULT_VISITOR_TEMPLATE,
+  buildGenericWebsitePages,
   buildWebsitePages,
   createEmptyAccountBundle,
+  createSampleDb,
+  defaultFirstMessage,
+  DEMO_SALON,
   LOGGED_OUT_SESSION,
   planByKey,
   SAMPLE_COST_PER_MINUTE_EUR,
   SAMPLE_LOGIN_USER,
   SAMPLE_VOICES,
   SPLETNOST_ID,
+  TRIAL_DAYS,
+  TRIAL_MINUTES,
   WIDGET_COLORS,
 } from './sample';
 import { getState, resetSampleData as resetStore, setState, useRevision, useStore } from './store';
@@ -30,11 +40,14 @@ import type {
   ActionResult,
   AdminAccountDetail,
   AdminAccountRow,
+  AdminErrorLine,
   Agent,
+  AgentReadiness,
   Booking,
   BookingSettings,
   CalendarConnection,
   Conversation,
+  ConversationCounts,
   Db,
   EmailLog,
   Id,
@@ -46,14 +59,27 @@ import type {
   NotificationSettings,
   OnboardingStep,
   OverviewStats,
+  PausedBy,
   Plan,
   PlanKey,
   Session,
+  TrialTerms,
   User,
+  Voice,
 } from './types';
 
 export type * from './types';
-export { WIDGET_COLORS, SAMPLE_VOICES };
+/** Pure helpers screens may call directly (no request): the default greeting and its noun. */
+export { WIDGET_COLORS, SAMPLE_VOICES, assistantNoun, defaultFirstMessage };
+
+/**
+ * The texts of the two e-mails every account starts with ("Ponastavi na privzeto besedilo").
+ * The one copy — do not write the default texts out in a page.
+ */
+export const DEFAULT_EMAIL_TEMPLATES: { visitor: string; owner: string } = {
+  visitor: DEFAULT_VISITOR_TEMPLATE,
+  owner: DEFAULT_OWNER_TEMPLATE,
+};
 
 /* ------------------------------------------------------------------ basics */
 
@@ -106,7 +132,7 @@ function scope(db: Db = getState()) {
   const account = db.accounts.find((a) => a.id === accountId);
   const agent = db.agents.find((a) => a.account_id === accountId);
   if (!account || !agent) {
-    throw new ApiError('not_found', 'Računa ni bilo mogoče najti. Prijavite se znova.');
+    throw new ApiError('not_found', 'Uporabniškega računa ni bilo mogoče najti. Prijavite se znova.');
   }
   return { db, accountId, account, agent };
 }
@@ -135,6 +161,55 @@ function isEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+/**
+ * "www.Studio-Zala.si/cenik?x=1" → { url: "https://studio-zala.si", host: "studio-zala.si" };
+ * null when it is not an address. ONE spelling of the host everywhere (no "www.", no path):
+ * the field, the page rows, the allowed domain and the messages all show the same thing.
+ */
+function parseWebsite(input: string): { url: string; host: string } | null {
+  let clean = input.trim();
+  if (!clean) return null;
+  if (!/^https?:\/\//i.test(clean)) clean = `https://${clean}`;
+  try {
+    const host = new URL(clean).hostname.toLowerCase().replace(/^www\./, '');
+    if (!host.includes('.')) return null;
+    return { url: `https://${host}`, host };
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------ agent pauses */
+
+/** The weightiest reason is the one shown; a failed payment outranks everything else. */
+const PAUSE_PRIORITY: PausedBy[] = ['payment', 'limit', 'admin', 'customer'];
+
+/**
+ * Adds or lifts ONE pause reason and derives status and paused_by from what is left.
+ * A draft agent stays a draft (there is nothing to pause yet); a paused agent becomes
+ * active only when the last reason is gone — so lifting one pause never undoes another.
+ */
+function withPause(agent: Agent, reason: PausedBy, on: boolean): Agent {
+  const rest = agent.pause_reasons.filter((r) => r !== reason);
+  const reasons = on ? [...rest, reason] : rest;
+  const main = PAUSE_PRIORITY.find((r) => reasons.includes(r)) ?? null;
+  let status = agent.status;
+  if (reasons.length > 0 && status !== 'draft') status = 'paused';
+  if (reasons.length === 0 && status === 'paused') status = 'active';
+  return { ...agent, pause_reasons: reasons, paused_by: status === 'paused' ? main : null, status };
+}
+
+function setPause(accountId: Id, reason: PausedBy, on: boolean): void {
+  setState((prev) => ({
+    ...prev,
+    agents: prev.agents.map((a) => (a.account_id === accountId ? withPause(a, reason, on) : a)),
+  }));
+}
+
+function includedSources(db: Db, accountId: Id): KnowledgeSource[] {
+  return db.sources.filter((s) => s.account_id === accountId && s.included && s.status !== 'error');
+}
+
 /* ----------------------------------------------------------------- session */
 
 /** Synchronous session for guards and shells. Screens may use it too. */
@@ -146,7 +221,11 @@ export function getSession(): Promise<Session> {
   return call(() => getState().session);
 }
 
-/** Stage 1: any non-empty e-mail and password signs in as the sample customer (with admin access). */
+/**
+ * Stage 1: any non-empty e-mail and password signs in as the sample customer (with admin
+ * access). The session carries the SAMPLE person's own address, never the typed one — the
+ * name and the address under it always belong together.
+ */
 export async function login(email: string, password: string): Promise<Session> {
   await wait(LATENCY_MS * 3);
   if (!email.trim() || !password) {
@@ -159,12 +238,35 @@ export async function login(email: string, password: string): Promise<Session> {
     loggedIn: true,
     role: 'admin',
     userName: SAMPLE_LOGIN_USER.name,
-    email: email.trim(),
+    email: SAMPLE_LOGIN_USER.email,
     accountId: SPLETNOST_ID,
     onboardingStep: 'done',
   };
-  setState((prev) => ({ ...prev, session }));
+  setState((prev) => ({ ...restoreSampleAccount(prev), session }));
   return structuredClone(session);
+}
+
+/** If the sample customer was deleted (deleteAccount), a new login brings it back fresh. */
+function restoreSampleAccount(db: Db): Db {
+  if (db.accounts.some((a) => a.id === SPLETNOST_ID)) return db;
+  const fresh = createSampleDb();
+  const mine = <T extends { account_id: Id }>(rows: T[]) => rows.filter((r) => r.account_id === SPLETNOST_ID);
+  return {
+    ...db,
+    accounts: [...fresh.accounts.filter((a) => a.id === SPLETNOST_ID), ...db.accounts],
+    users: [...mine(fresh.users), ...db.users],
+    agents: [...mine(fresh.agents), ...db.agents],
+    bookingSettings: [...mine(fresh.bookingSettings), ...db.bookingSettings],
+    calendarConnections: [...mine(fresh.calendarConnections), ...db.calendarConnections],
+    notificationSettings: [...mine(fresh.notificationSettings), ...db.notificationSettings],
+    sources: [...mine(fresh.sources), ...db.sources],
+    conversations: [...mine(fresh.conversations), ...db.conversations],
+    leads: [...mine(fresh.leads), ...db.leads],
+    bookings: [...mine(fresh.bookings), ...db.bookings],
+    emailLog: [...mine(fresh.emailLog), ...db.emailLog],
+    invoices: [...mine(fresh.invoices), ...db.invoices],
+    installCodeCopied: { ...db.installCodeCopied, [SPLETNOST_ID]: true },
+  };
 }
 
 export async function logout(): Promise<void> {
@@ -173,17 +275,32 @@ export async function logout(): Promise<void> {
 }
 
 export interface RegisterInput {
+  /** the person's own first and last name */
+  ownerName: string;
   businessName: string;
-  name: string;
+  /** with or without https://; may be empty — the wizard asks again in step 1 */
+  website: string;
   email: string;
   password: string;
 }
 
-/** Stage 1: creates a new, empty trial account in the browser and starts the wizard at step 1. */
+/**
+ * Stage 1: creates a new, empty trial account in the browser and starts the wizard at step 1.
+ * Everything the sign-up form asks is saved in this one call: the person's name becomes the
+ * owner (never the business name), the website lands on the account and its domain becomes
+ * the allowed domain of the widget.
+ */
 export async function register(input: RegisterInput): Promise<Session> {
   await wait(LATENCY_MS * 3);
-  if (!input.businessName.trim() || !input.name.trim()) {
-    throw new ApiError('invalid', 'Vpišite ime podjetja ter svoje ime in priimek.');
+  if (!input.ownerName.trim()) {
+    throw new ApiError('invalid', 'Vpišite svoje ime in priimek.');
+  }
+  if (!input.businessName.trim()) {
+    throw new ApiError('invalid', 'Vpišite ime podjetja.');
+  }
+  const site = input.website.trim() ? parseWebsite(input.website) : { url: '', host: '' };
+  if (!site) {
+    throw new ApiError('invalid', 'Naslov spletne strani ni pravilno zapisan. Primer: vasepodjetje.si');
   }
   if (!isEmail(input.email)) {
     throw new ApiError('invalid', 'E-naslov ni pravilno zapisan. Primer: ime@podjetje.si');
@@ -193,8 +310,10 @@ export async function register(input: RegisterInput): Promise<Session> {
   }
   const bundle = createEmptyAccountBundle({
     businessName: input.businessName.trim(),
-    userName: input.name.trim(),
+    userName: input.ownerName.trim(),
     email: input.email.trim(),
+    websiteUrl: site.url,
+    allowedDomain: site.host,
   });
   const session: Session = {
     loggedIn: true,
@@ -216,10 +335,24 @@ export async function register(input: RegisterInput): Promise<Session> {
   return structuredClone(session);
 }
 
+/**
+ * Saves how far the person got in the wizard.
+ *
+ * Finishing it ('done') ALSO switches the agent on — when it has at least one included
+ * knowledge source. Without one the agent stays an "Osnutek": an agent that knows nothing
+ * must not go live by accident. Ask api.getAgentReadiness() what is missing and show it.
+ */
 export function setOnboardingStep(step: OnboardingStep): Promise<Session> {
   return call(() => {
-    scope();
-    setState((prev) => ({ ...prev, session: { ...prev.session, onboardingStep: step } }));
+    const { db, accountId, agent } = scope();
+    const activate = step === 'done' && agent.status === 'draft' && includedSources(db, accountId).length > 0;
+    setState((prev) => ({
+      ...prev,
+      session: { ...prev.session, onboardingStep: step },
+      agents: activate
+        ? prev.agents.map((a) => (a.account_id === accountId ? { ...a, status: 'active' as const } : a))
+        : prev.agents,
+    }));
     return getState().session;
   });
 }
@@ -246,18 +379,51 @@ export function updateAccount(patch: AccountPatch): Promise<Account> {
     if (patch.name !== undefined && !patch.name.trim()) {
       throw new ApiError('invalid', 'Ime podjetja ne sme biti prazno.');
     }
-    patchAccount(accountId, patch);
+    const clean: AccountPatch = { ...patch };
+    if (clean.website_url !== undefined && clean.website_url.trim()) {
+      const site = parseWebsite(clean.website_url);
+      if (!site) {
+        throw new ApiError('invalid', 'Naslov spletne strani ni pravilno zapisan. Primer: vasepodjetje.si');
+      }
+      clean.website_url = site.url;
+    }
+    patchAccount(accountId, clean);
     if (patch.name !== undefined) patchAgent(accountId, { business_name: patch.name });
     return scope().account;
   });
 }
 
-/** Stage 1 does not delete anything. */
+/**
+ * Deletes the logged-in account with everything that belongs to it and ends the session
+ * (the caller is logged out; the route guard then leads to Prijava). In stage 1 "everything"
+ * is the sample store of this browser; the sample customer comes back at the next login.
+ */
 export function deleteAccount(): Promise<ActionResult> {
   return call(() => {
-    scope();
+    const { accountId, account } = scope();
+    const others = <T extends { account_id: Id }>(rows: T[]) => rows.filter((r) => r.account_id !== accountId);
+    setState((prev) => {
+      const { [accountId]: _gone, ...installCodeCopied } = prev.installCodeCopied;
+      return {
+        ...prev,
+        session: { ...LOGGED_OUT_SESSION },
+        accounts: prev.accounts.filter((a) => a.id !== accountId),
+        users: others(prev.users),
+        agents: others(prev.agents),
+        bookingSettings: others(prev.bookingSettings),
+        calendarConnections: others(prev.calendarConnections),
+        notificationSettings: others(prev.notificationSettings),
+        sources: others(prev.sources),
+        conversations: others(prev.conversations),
+        leads: others(prev.leads),
+        bookings: others(prev.bookings),
+        emailLog: others(prev.emailLog),
+        invoices: others(prev.invoices),
+        installCodeCopied,
+      };
+    });
     return simulated(
-      'Predogled: račun ni bil izbrisan. Izbris računa in vseh podatkov bo deloval, ko bo povezan strežnik.',
+      `Predogled: uporabniški račun ${account.name} je izbrisan iz vzorčnih podatkov v tem brskalniku in odjavljeni ste. V polni različici se trajno izbrišejo agent, viri znanja, pogovori, kontakti in rezervacije.`,
     );
   });
 }
@@ -282,7 +448,8 @@ export function inviteMember(email: string): Promise<ActionResult> {
     const user: User = {
       id: newId('usr'),
       account_id: accountId,
-      name: address.split('@')[0] ?? address,
+      // Until the invitation is accepted we know nothing but the address, so it is the name too.
+      name: address,
       email: address,
       account_role: 'member',
       status: 'invited',
@@ -290,7 +457,7 @@ export function inviteMember(email: string): Promise<ActionResult> {
     };
     setState((prev) => ({ ...prev, users: [...prev.users, user] }));
     return simulated(
-      `Predogled: ${address} je dodan na seznam, vabilo po e-pošti pa ni bilo poslano.`,
+      `Predogled: ${address} je dodan na seznam, vabilo pa ni bilo poslano. V polni različici oseba prejme e-pošto s povezavo za dostop.`,
     );
   });
 }
@@ -301,10 +468,10 @@ export function removeMember(id: Id): Promise<ActionResult> {
     const user = db.users.find((u) => u.id === id && u.account_id === accountId);
     if (!user) throw new ApiError('not_found', 'Te osebe ni več na seznamu.');
     if (user.account_role === 'owner') {
-      throw new ApiError('invalid', 'Lastnika računa ni mogoče odstraniti.');
+      throw new ApiError('invalid', 'Lastnika uporabniškega računa ni mogoče odstraniti.');
     }
     setState((prev) => ({ ...prev, users: prev.users.filter((u) => u.id !== id) }));
-    return done(`${user.name} nima več dostopa do računa.`);
+    return done(`${user.name} nima več dostopa do uporabniškega računa.`);
   });
 }
 
@@ -332,52 +499,288 @@ export type AgentPatch = Partial<
   >
 >;
 
+/**
+ * `status` in a patch is understood as the CUSTOMER's own switch:
+ *   'paused' → pauseAgent(),  'active' → resumeAgent() (or activateAgent() for a draft).
+ * It can therefore fail with a readable sentence, e.g. when a failed payment still holds
+ * the agent. Prefer the explicit functions below in new code.
+ */
 export function updateAgent(patch: AgentPatch): Promise<Agent> {
   return call(() => {
-    const { accountId } = scope();
+    const { accountId, agent } = scope();
     if (patch.name !== undefined && !patch.name.trim()) {
       throw new ApiError('invalid', 'Ime agenta ne sme biti prazno.');
     }
-    const clean: AgentPatch = { ...patch };
+    const { status, ...clean }: AgentPatch = { ...patch };
     if (clean.allowed_domain !== undefined) {
       clean.allowed_domain = clean.allowed_domain
         .trim()
         .replace(/^https?:\/\//, '')
+        .replace(/^www\./, '')
         .replace(/\/.*$/, '');
+    }
+    if (status !== undefined && status !== agent.status) {
+      if (status === 'paused') pauseNow();
+      else if (status === 'active') switchOnNow();
+      else throw new ApiError('invalid', 'Tega stanja agenta ni mogoče nastaviti ročno.');
     }
     patchAgent(accountId, clean);
     return scope().agent;
   });
 }
 
-export function listVoices(): Promise<typeof SAMPLE_VOICES> {
-  return call(() => SAMPLE_VOICES);
+/* ---- switching the agent on and off (customer side) ---- */
+
+const NO_SOURCES_TEXT =
+  'Agent še nima nobenega vključenega vira znanja, zato obiskovalcem ne bi znal odgovoriti.';
+
+/** What is still missing before the agent may go live. Today: at least one included source. */
+export function getAgentReadiness(): Promise<AgentReadiness> {
+  return call(() => {
+    const { db, accountId, agent } = scope();
+    const missing: AgentReadiness['missing'] = [];
+    if (includedSources(db, accountId).length === 0) {
+      missing.push({
+        key: 'sources',
+        title: 'Viri znanja',
+        text: NO_SOURCES_TEXT,
+        action: { label: 'Dodaj vire znanja', to: '/app/viri' },
+      });
+    }
+    return { status: agent.status, canActivate: missing.length === 0, missing };
+  });
+}
+
+function stillHeldBy(agent: Agent): string {
+  const reason = agent.paused_by;
+  return reason ? `Agent ostaja ustavljen. ${PAUSED_BY[reason].help}` : 'Agent ostaja ustavljen.';
+}
+
+function switchOnNow(): ActionResult {
+  const { db, accountId, agent } = scope();
+  if (agent.status === 'active') return done('Agent je že aktiven.');
+  if (includedSources(db, accountId).length === 0) {
+    throw new ApiError(
+      'invalid',
+      `Agenta še ni mogoče vklopiti. ${NO_SOURCES_TEXT} Dodajte spletno stran, datoteko ali besedilo v razdelku Viri znanja.`,
+    );
+  }
+  if (agent.status === 'paused') {
+    setPause(accountId, 'customer', false);
+    const after = scope().agent;
+    if (after.status === 'paused') throw new ApiError('invalid', stillHeldBy(after));
+    return simulated(
+      'Predogled: agent je znova označen kot aktiven. V polni različici od tega trenutka spet odgovarja obiskovalcem.',
+    );
+  }
+  // draft or error → active (other pauses, if any, come into force at once)
+  setState((prev) => ({
+    ...prev,
+    agents: prev.agents.map((a) => {
+      if (a.account_id !== accountId) return a;
+      const main = PAUSE_PRIORITY.find((r) => a.pause_reasons.includes(r)) ?? null;
+      return main ? { ...a, status: 'paused' as const, paused_by: main } : { ...a, status: 'active' as const };
+    }),
+  }));
+  const after = scope().agent;
+  if (after.status === 'paused') throw new ApiError('invalid', stillHeldBy(after));
+  return simulated(
+    'Predogled: agent je označen kot aktiven. V polni različici od tega trenutka odgovarja obiskovalcem na spletni strani, kjer je nameščen pripomoček.',
+  );
+}
+
+function pauseNow(): ActionResult {
+  const { accountId, agent } = scope();
+  if (agent.status === 'draft') {
+    throw new ApiError('invalid', 'Agent je še osnutek in ne odgovarja obiskovalcem, zato ga ni treba ustaviti.');
+  }
+  setPause(accountId, 'customer', true);
+  return simulated(
+    'Predogled: agent je označen kot začasno ustavljen. V polni različici pripomoček obiskovalcem pove, da pomočnik trenutno ni na voljo.',
+  );
 }
 
 /**
- * Reply of the agent in the test widget. Stage 1 has no ElevenLabs, so this picks a
- * canned sentence by keyword. The widget must say that replies are samples.
- * Works without a login (the landing page demo uses it).
+ * "Vklopi agenta": a draft becomes active. Refuses with a readable sentence when the agent
+ * has no included knowledge source (see getAgentReadiness).
  */
-export function previewAgentReply(question: string): Promise<{ text: string; simulated: true }> {
+export function activateAgent(): Promise<ActionResult> {
+  return call(() => switchOnNow(), 400);
+}
+
+/** The customer's own pause. It is lifted only by resumeAgent(), never by the admin or a payment. */
+export function pauseAgent(): Promise<ActionResult> {
+  return call(() => pauseNow(), 400);
+}
+
+/**
+ * Lifts the customer's own pause. If something else still holds the agent (failed payment,
+ * used-up minutes, a pause by the platform admin), it throws and says which one and what ends it.
+ */
+export function resumeAgent(): Promise<ActionResult> {
+  return call(() => switchOnNow(), 400);
+}
+
+export function listVoices(): Promise<Voice[]> {
+  return call(() => SAMPLE_VOICES);
+}
+
+/* ---- sample replies of the widget preview ---- */
+
+export interface AgentReply {
+  text: string;
+  simulated: true;
+}
+
+const DONT_KNOW = 'Tega podatka nimam. Želite, da vas pokličemo?';
+const PRICE_STOP = new Set(['koliko', 'stane', 'stanejo', 'cena', 'cene', 'ceno', 'cenik', 'kaksna', 'kakšna', 'vasa', 'vaša', 'prosim', 'zanima']);
+
+function stem(word: string): string {
+  return word.slice(0, 5);
+}
+
+/** Lines of a price list of the form "Storitev: cena". */
+function priceLines(text: string): { label: string; line: string }[] {
+  return text
+    .split('\n')
+    .map((l) => l.trim().replace(/[.;]$/, ''))
+    .filter((l) => /^[^:]{3,60}:\s*\S/.test(l) && /(\d|brezplač)/i.test(l))
+    .map((line) => ({ label: line.slice(0, line.indexOf(':')), line }));
+}
+
+function answerPrice(question: string, sources: KnowledgeSource[]): string {
+  const list = sources.find((s) => s.type === 'text' && s.content && /cenik|cene/i.test(s.title));
+  const lines = list?.content ? priceLines(list.content) : [];
+  if (lines.length === 0) return DONT_KNOW;
+  const wanted = question
+    .toLowerCase()
+    .split(/[^a-zčšžćđ0-9]+/i)
+    .filter((w) => w.length >= 4 && !PRICE_STOP.has(w))
+    .map(stem);
+  let best: { line: string; score: number } | null = null;
+  for (const l of lines) {
+    const label = l.label.toLowerCase();
+    const score = wanted.filter((w) => label.includes(w)).length;
+    if (score > 0 && (!best || score > best.score)) best = { line: l.line, score };
+  }
+  if (best) return `V našem ceniku piše: »${best.line}«. Vam lahko pomagam še s čim?`;
+  const some = lines.slice(0, 3).map((l) => l.line).join('; ');
+  return `Cena je odvisna od storitve. Iz našega cenika: ${some}. Za katero storitev vas zanima cena?`;
+}
+
+/**
+ * Reply of the agent in the IN-APP test widget (Pregled, wizard step 5, Namestitev).
+ * Stage 1 has no ElevenLabs, so the sentence is picked by keyword — but it is always what the
+ * VISITOR would hear, in the business's voice, and it uses the account's own sources where
+ * it can: a price question is answered from an included text source called "Cenik …";
+ * a wish for an appointment follows the account's booking mode. What is not in the sources
+ * gets the agent's honest "Tega podatka nimam."
+ * The landing page has its own demo: demoAgentReply.
+ */
+export function previewAgentReply(question: string): Promise<AgentReply> {
   return call(() => {
+    const db = getState();
+    const loggedIn = db.session.loggedIn;
+    const agent = loggedIn ? db.agents.find((a) => a.account_id === db.session.accountId) : undefined;
+    const sources = agent ? includedSources(db, agent.account_id) : [];
+    const mode = agent ? db.bookingSettings.find((b) => b.account_id === agent.account_id)?.mode : undefined;
     const q = question.toLowerCase();
-    let text =
-      'Tega podatka nimam zapisanega. Želite, da vas pokliče naš svetovalec in vam odgovori?';
-    if (/(cen|stane|koliko|drag)/.test(q)) {
-      text =
-        'Cene berem iz vašega cenika v virih znanja. V predogledu odgovarjam z vzorčnimi stavki, zato vam številke tukaj ne povem.';
+    let text = DONT_KNOW;
+    if (/(cen|stane|koliko|drag|plača)/.test(q)) {
+      text = answerPrice(question, sources);
     } else if (/(termin|sestan|posvet|rezerv|naroč)/.test(q)) {
       text =
-        'Lahko vam poiščem prost termin. V predogledu koledarja ne preverjam zares. Kateri dan vam najbolj ustreza?';
-    } else if (/(kdo si|robot|človek|umetna|\bai\b)/.test(q)) {
-      text = 'Sem AI pomočnik, ne človek. Odgovarjam iz vsebine vaše spletne strani.';
+        mode === 'auto'
+          ? 'Z veseljem vam poiščem prost termin. Kateri dan vam najbolj ustreza?'
+          : 'Lahko zapišem vašo željo za termin, potrdili vam jo bomo po e-pošti. Kateri dan in ura vam ustrezata?';
+    } else if (/(kdo si|kdo ste|robot|človek|umetna|\bai\b)/.test(q)) {
+      text = agent
+        ? `Sem ${agent.name}, ${assistantNoun(agent.voice_id)} podjetja ${agent.business_name}. Nisem človek, odgovarjam pa iz vsebine naše spletne strani.`
+        : 'Sem AI pomočnik, ne človek.';
+    } else if (/(kontakt|telefon|poklič|kje ste|naslov|e-pošt|mail)/.test(q)) {
+      text = sources.some((s) => s.type === 'website_page' && /kontakt/i.test(s.title))
+        ? 'Podatke za stik najdete na naši strani Kontakt. Lahko pa mi pustite svojo telefonsko številko in vas pokličemo.'
+        : DONT_KNOW;
     } else if (/(hvala|adijo|nasvidenje|lep dan)/.test(q)) {
       text = 'Prosim. Lep dan želim!';
     } else if (/(živjo|zdravo|pozdrav|dober dan)/.test(q)) {
       text = 'Pozdravljeni. Kaj vas zanima?';
     }
     return { text, simulated: true as const };
+  }, 700);
+}
+
+/** Where the scripted landing-page conversation stands; pass it back with the next question. */
+export type DemoState = 'slot' | 'name' | 'contact';
+
+export interface DemoReply extends AgentReply {
+  /** undefined = no step is open */
+  state?: DemoState;
+}
+
+/**
+ * Reply of the landing-page demo: the assistant of the FICTIONAL "Frizerski salon Lana".
+ * Works without a login. The salon, its prices, hours, address and free times are invented
+ * sample content (sample.ts → DEMO_SALON); nothing is booked and nothing typed is stored.
+ * The conversation can run the whole way a real one does — price, opening hours, two offered
+ * times, name, typed e-mail — and ends by saying plainly that this was a demonstration.
+ */
+export function demoAgentReply(question: string, state?: DemoState): Promise<DemoReply> {
+  return call((): DemoReply => {
+    const d = DEMO_SALON;
+    const q = question.toLowerCase().trim();
+    const reply = (text: string, next?: DemoState): DemoReply => ({ text, simulated: true, state: next });
+    const wantsBooking = /(termin|rezerv|naroč|prost|kdaj lahko pridem|pridem)/.test(q);
+
+    if (state === 'contact') {
+      return reply(
+        'Hvala. V pravem pogovoru bi zdaj termin vpisal v koledar salona in vam poslal potrditev. To je predstavitev: termin ni rezerviran in vaših podatkov nismo shranili.',
+      );
+    }
+    if (state === 'name' && q.length > 1 && !q.includes('?')) {
+      return reply(
+        `Hvala, ${question.trim().replace(/[.!]+$/, '')}. Prosim, vpišite še e-naslov, kamor pošljemo potrditev. V tej predstavitvi je lahko izmišljen.`,
+        'contact',
+      );
+    }
+    if (state === 'slot') {
+      const first = /(prv|9|devet|jutri)/.test(q);
+      const second = /(drug|11|enajst|sobot)/.test(q);
+      if (first || second) {
+        return reply(`Dobro, ${first ? d.slots[0] : d.slots[1]}. Kako vam je ime?`, 'name');
+      }
+      if (/(ne ustreza|noben|drugi dan|kasneje|popoldne)/.test(q)) {
+        return reply(
+          'Drugih prostih terminov ta teden nimam. Lahko zapišem vašo željo in salon vam jo potrdi po e-pošti. Kako vam je ime?',
+          'name',
+        );
+      }
+    }
+
+    if (wantsBooking) {
+      return reply(`Prosta termina sta ${d.slots[0]} in ${d.slots[1]}. Kateri vam ustreza?`, 'slot');
+    }
+    if (/(cen|stane|koliko|drag|plača)/.test(q)) {
+      const hit = d.prices.find((p) => p.match.test(q));
+      if (hit) return reply(`${hit.sentence} Vam poiščem prost termin?`);
+      return reply(`${d.priceSummary} Katera storitev vas zanima?`);
+    }
+    if (/(odprt|delovni čas|delate|urnik|do kdaj|od kdaj|sobot|nedelj)/.test(q)) {
+      return reply(d.hours);
+    }
+    if (/(kje|naslov|lokacij|parkir|kako pridem)/.test(q)) {
+      return reply(d.address);
+    }
+    if (/(kdo si|kdo ste|robot|človek|umetna|\bai\b)/.test(q)) {
+      return reply(`Sem AI pomočnik, ne človek. Odgovarjam iz vsebine spletne strani salona ${d.shortName}.`);
+    }
+    if (/(hvala|adijo|nasvidenje|lep dan)/.test(q)) {
+      return reply('Prosim. Lep dan želim!');
+    }
+    if (/(živjo|zdravo|pozdrav|dober dan)/.test(q)) {
+      return reply('Pozdravljeni. Vas zanimajo cene, delovni čas ali prost termin?');
+    }
+    return reply('Tega podatka nimam. Želite, da vas pokličemo? Pustite ime in telefonsko številko.');
   }, 700);
 }
 
@@ -404,6 +807,8 @@ export function toggleSource(id: Id, included: boolean): Promise<KnowledgeSource
               included,
               status: included ? 'pending' : 'excluded',
               error: null,
+              // The person decided for themselves; the import's suggestion no longer applies.
+              note: null,
             }
           : s,
       ),
@@ -437,6 +842,7 @@ function addSource(partial: Pick<KnowledgeSource, 'type' | 'title' | 'content' |
     elevenlabs_doc_id: null,
     last_synced_at: nowIso(),
     error: null,
+    note: null,
     ...partial,
   };
   setState((prev) => ({ ...prev, sources: [...prev.sources, source] }));
@@ -523,7 +929,7 @@ export async function syncWebsite(): Promise<ActionResult> {
   if (pages.length === 0) {
     throw new ApiError(
       'invalid',
-      'Ni strani za sinhronizacijo. Najprej uvozite spletno stran ali vključite vsaj eno stran.',
+      'Ni strani, ki bi jih agent lahko znova prebral. Najprej uvozite spletno stran ali vključite vsaj eno stran.',
     );
   }
   const ids = new Set(pages.map((p) => p.id));
@@ -541,38 +947,39 @@ export async function syncWebsite(): Promise<ActionResult> {
     agents: prev.agents.map((a) => (a.account_id === accountId ? { ...a, last_sync_at: at } : a)),
   }));
   return simulated(
-    `Predogled: sinhronizacija je simulirana. Strani niso bile znova prebrane (${pages.length} označenih kot sinhronizirane).`,
+    `Predogled: strani niso bile znova prebrane. V polni različici agent ob tem prebere trenutno vsebino vseh vključenih strani (zdaj jih je ${formatNumber(pages.length)}).`,
   );
 }
 
-/** Wizard step 1 and "Uvozi stran". Simulated: always lists the sample pages under the given address. */
+/**
+ * Wizard step 1 and "Uvozi stran". Simulated — no website is read in stage 1:
+ *  - the sample customer (Spletnost) gets its own stored page list back;
+ *  - EVERY other account gets a neutral list built from the entered domain (Domov, Storitve,
+ *    Cenik, O nas, Kontakt, two blog posts, and the two legal pages pre-excluded with the
+ *    reason in `note`). Never another business's pages.
+ * The host is written one way everywhere (without "www."), in the rows and in the message.
+ */
 export async function importWebsite(url: string): Promise<ActionResult> {
   await wait(LATENCY_MS);
   const { accountId, agent } = scope();
-  let clean = url.trim();
-  if (!clean) throw new ApiError('invalid', 'Vpišite naslov spletne strani, na primer https://vasepodjetje.si');
-  if (!/^https?:\/\//i.test(clean)) clean = `https://${clean}`;
-  let host: string;
-  try {
-    host = new URL(clean).hostname;
-  } catch {
-    throw new ApiError('invalid', 'Naslov spletne strani ni pravilno zapisan. Primer: https://vasepodjetje.si');
+  if (!url.trim()) throw new ApiError('invalid', 'Vpišite naslov spletne strani, na primer vasepodjetje.si');
+  const site = parseWebsite(url);
+  if (!site) {
+    throw new ApiError('invalid', 'Naslov spletne strani ni pravilno zapisan. Primer: vasepodjetje.si');
   }
-  if (!host.includes('.')) {
-    throw new ApiError('invalid', 'Naslov spletne strani ni pravilno zapisan. Primer: https://vasepodjetje.si');
-  }
-  const base = `https://${host}`;
+  const base = site.url;
+  const host = site.host;
   const prefix = newId('imp');
-  const pages = buildWebsitePages(accountId, agent.id, base, null, prefix).map((p) =>
+  const isSample = accountId === SPLETNOST_ID;
+  const build = isSample ? buildWebsitePages : buildGenericWebsitePages;
+  const pages = build(accountId, agent.id, base, null, prefix).map((p) =>
     p.included ? { ...p, status: 'pending' as const } : p,
   );
   setState((prev) => ({
     ...prev,
     accounts: prev.accounts.map((a) => (a.id === accountId ? { ...a, website_url: base } : a)),
     agents: prev.agents.map((a) =>
-      a.account_id === accountId
-        ? { ...a, allowed_domain: a.allowed_domain || host.replace(/^www\./, '') }
-        : a,
+      a.account_id === accountId ? { ...a, allowed_domain: a.allowed_domain || host } : a,
     ),
     sources: [
       ...prev.sources.filter((s) => !(s.account_id === accountId && s.type === 'website_page')),
@@ -591,7 +998,9 @@ export async function importWebsite(url: string): Promise<ActionResult> {
     agents: prev.agents.map((a) => (a.account_id === accountId ? { ...a, last_sync_at: at } : a)),
   }));
   return simulated(
-    `Predogled: uvoz je simuliran. Prikazan je vzorčni seznam ${pages.length} strani; vaša stran ${host} ni bila zares prebrana.`,
+    isSample
+      ? `Predogled: strani ${host} nismo znova prebrali. Prikazan je shranjeni vzorčni seznam ${formatNumber(pages.length)} strani. V polni različici agent poišče in prebere vse strani na tem naslovu.`
+      : `Predogled: strani ${host} nismo zares prebrali. Prikazan je vzorčni seznam ${formatNumber(pages.length)} strani, kakršne ima običajna spletna stran podjetja. V polni različici bo tukaj seznam vaših strani.`,
   );
 }
 
@@ -661,7 +1070,7 @@ export async function connectCalendar(): Promise<ActionResult> {
     ),
   }));
   return simulated(
-    `Predogled: povezava z Google Koledarjem je simulirana. Prikazan je vzorčni naslov ${connection.connected_email}.`,
+    `Predogled: Google Koledar ni bil zares povezan, prikazan je vzorčni naslov ${connection.connected_email}. V polni različici se prijavite v svoj Google račun in izberete koledar.`,
   );
 }
 
@@ -676,7 +1085,7 @@ export async function disconnectCalendar(): Promise<ActionResult> {
     ),
   }));
   return simulated(
-    'Predogled: koledar je odklopljen (simulirano). Agent zdaj zapisuje želje za termin, potrdite jih sami.',
+    'Predogled: koledar je odklopljen samo v vzorčnih podatkih. V polni različici agent po odklopu ne vidi več vašega koledarja: želene termine zapiše, potrdite jih sami.',
   );
 }
 
@@ -736,7 +1145,7 @@ export async function sendTestEmail(): Promise<ActionResult> {
   };
   setState((prev) => ({ ...prev, emailLog: [...prev.emailLog, row] }));
   return simulated(
-    `Predogled: testno sporočilo za ${settings.notify_email} ni bilo zares poslano. Pošiljanje e-pošte bo delovalo, ko bo povezan strežnik.`,
+    `Predogled: testno sporočilo na ${settings.notify_email} ni bilo poslano. V polni različici ga prejmete v svoj poštni predal.`,
   );
 }
 
@@ -803,7 +1212,7 @@ export function exportLeadsCsv(): Promise<{ csv: string; rows: number }> {
     const leads = db.leads.filter((l) => l.account_id === accountId);
     const cell = (v: string) => `"${v.replace(/"/g, '""')}"`;
     const lines = [
-      ['Ime', 'E-pošta', 'Telefon', 'Kaj so želeli', 'Stanje', 'Datum'].map(cell).join(';'),
+      ['Ime', 'E-naslov', 'Telefon', 'Kaj so želeli', 'Stanje', 'Datum'].map(cell).join(';'),
       ...leads.map((l) =>
         [
           l.name,
@@ -854,9 +1263,9 @@ function setBookingStatus(id: Id, status: Booking['status']): Booking {
 /** Confirms a requested appointment. The e-mail to the visitor is simulated. */
 export function confirmBooking(id: Id): Promise<ActionResult> {
   return call(() => {
-    const booking = setBookingStatus(id, 'confirmed');
+    setBookingStatus(id, 'confirmed');
     return simulated(
-      `Predogled: termin je potrjen. Potrditev za ${booking.customer_email} ni bila zares poslana.`,
+      'Predogled: termin je potrjen, potrditev obiskovalcu pa ni bila poslana. V polni različici obiskovalec prejme e-pošto s potrjenim terminom.',
     );
   }, 500);
 }
@@ -865,33 +1274,65 @@ export function confirmBooking(id: Id): Promise<ActionResult> {
 export function cancelBooking(id: Id): Promise<ActionResult> {
   return call(() => {
     const booking = setBookingStatus(id, 'cancelled');
+    const inCalendar = Boolean(booking.calendar_event_id);
     return simulated(
-      `Predogled: termin je odpovedan. Obvestilo za ${booking.customer_email} ni bilo zares poslano${
-        booking.calendar_event_id ? ', dogodek v koledarju pa ni bil izbrisan' : ''
-      }.`,
+      `Predogled: termin je odpovedan, obvestilo obiskovalcu pa ni bilo poslano${
+        inCalendar ? ' in dogodek v koledarju ni bil izbrisan' : ''
+      }. V polni različici obiskovalec prejme e-pošto${inCalendar ? ', dogodek pa se izbriše iz koledarja' : ''}.`,
     );
   }, 500);
 }
 
 /* ---------------------------------------------------------------- overview */
 
+/**
+ * THE way conversations are counted. Pregled, Pogovori and the admin area all go through
+ * this function, so two screens can only differ when they count different lists (and then
+ * their labels say so — labels.ts → COUNT_LABELS).
+ */
+export function summarizeConversations(
+  list: Pick<Conversation, 'outcome' | 'duration_sec' | 'visitor_name' | 'visitor_email' | 'visitor_phone'>[],
+): ConversationCounts {
+  const counts: ConversationCounts = {
+    total: list.length,
+    by_outcome: { question: 0, lead: 0, booking: 0 },
+    with_contact: 0,
+    duration_sec: 0,
+  };
+  for (const c of list) {
+    counts.by_outcome[c.outcome] += 1;
+    if (c.visitor_name || c.visitor_email || c.visitor_phone) counts.with_contact += 1;
+    counts.duration_sec += c.duration_sec;
+  }
+  return counts;
+}
+
+/** Activity of one account in its current billing period. Used by Pregled AND by the admin area. */
+function periodStats(db: Db, account: Account): OverviewStats {
+  const inPeriod = (iso: string) => iso >= account.period_start && iso <= account.period_end;
+  const conversations = db.conversations.filter((c) => c.account_id === account.id && inPeriod(c.started_at));
+  const ids = new Set(conversations.map((c) => c.id));
+  const counts = summarizeConversations(conversations);
+  return {
+    period_start: account.period_start,
+    period_end: account.period_end,
+    conversations: counts.total,
+    leads: db.leads.filter((l) => l.account_id === account.id && inPeriod(l.created_at)).length,
+    // An appointment belongs to the period in which it was AGREED (its conversation), not to
+    // the day it takes place; cancelled ones are left out.
+    bookings: db.bookings.filter(
+      (b) => b.account_id === account.id && b.status !== 'cancelled' && ids.has(b.conversation_id),
+    ).length,
+    minutes_used: account.minutes_used,
+    minutes_included: account.minutes_included,
+    counts,
+  };
+}
+
 export function getOverviewStats(): Promise<OverviewStats> {
   return call(() => {
-    const { db, accountId, account } = scope();
-    const inPeriod = (iso: string) => iso >= account.period_start && iso <= account.period_end;
-    return {
-      period_start: account.period_start,
-      period_end: account.period_end,
-      conversations: db.conversations.filter(
-        (c) => c.account_id === accountId && inPeriod(c.started_at),
-      ).length,
-      leads: db.leads.filter((l) => l.account_id === accountId && inPeriod(l.created_at)).length,
-      bookings: db.bookings.filter(
-        (b) => b.account_id === accountId && b.status !== 'cancelled',
-      ).length,
-      minutes_used: account.minutes_used,
-      minutes_included: account.minutes_included,
-    };
+    const { db, account } = scope();
+    return periodStats(db, account);
   });
 }
 
@@ -943,6 +1384,15 @@ export function listPlans(): Promise<Plan[]> {
   return call(() => getState().plans);
 }
 
+/**
+ * Public: what the free trial includes. Print it with formatTrialTerms() and call the trial
+ * by its one name (labels.ts → TRIAL). Nothing is known about payment cards — do not add
+ * "brez kartice" or similar next to it.
+ */
+export function getTrialTerms(): Promise<TrialTerms> {
+  return call(() => ({ days: TRIAL_DAYS, minutes: TRIAL_MINUTES }));
+}
+
 export async function changePlan(key: PlanKey): Promise<ActionResult> {
   await wait(700);
   const { db, accountId } = scope();
@@ -964,12 +1414,13 @@ export async function changePlan(key: PlanKey): Promise<ActionResult> {
           }
         : a,
     ),
+    // A paid plan settles a failed payment and used-up minutes — and only those two pauses.
     agents: prev.agents.map((a) =>
-      a.account_id === accountId && a.status === 'paused' ? { ...a, status: 'active' } : a,
+      a.account_id === accountId ? withPause(withPause(a, 'payment', false), 'limit', false) : a,
     ),
   }));
   return simulated(
-    `Predogled: paket ${plan.name} je izbran brez plačila. Plačilo s kartico prek Stripe bo delovalo v poznejši fazi.`,
+    `Predogled: paket ${plan.name} je izbran brez plačila. V polni različici pred zamenjavo paketa plačate s kartico.`,
   );
 }
 
@@ -988,48 +1439,88 @@ export function openBillingPortal(): Promise<ActionResult> {
   return call(() => {
     scope();
     return simulated(
-      'Predogled: portal za plačila (Stripe) še ni povezan. Tu boste zamenjali kartico in prenesli račune.',
+      'Predogled: stran za upravljanje plačila se ni odprla. V polni različici tam zamenjate kartico in prenesete izdane račune.',
     );
   }, 500);
 }
 
 /* ------------------------------------------------------------------- admin */
 
-function adminRow(db: Db, account: Account): AdminAccountRow {
-  const agent = db.agents.find((a) => a.account_id === account.id);
-  const owner = db.users.find((u) => u.account_id === account.id && u.account_role === 'owner');
-  const last = db.conversations
-    .filter((c) => c.account_id === account.id)
-    .sort((a, b) => b.started_at.localeCompare(a.started_at))[0];
-  return {
-    account,
-    plan: planByKey(db.plans, account.plan_key),
-    agent_status: agent?.status ?? 'draft',
-    owner_email: owner?.email ?? '',
-    estimated_cost_eur: Math.round(account.minutes_used * SAMPLE_COST_PER_MINUTE_EUR * 100) / 100,
-    last_conversation_at: last?.started_at ?? null,
-    error_count: adminErrors(db, account).length,
-  };
+/*
+ * PRIVACY RULE of this section: the platform admin gets numbers and non-personal facts.
+ * Nothing below may return a visitor's name, e-mail address or phone number, a transcript,
+ * a summary or a topic — not even inside an error text. The only person named is the owner
+ * of the account, as the business contact. scripts/check-data.mjs searches every response
+ * of adminListAccounts / adminGetAccount for the visitors' details and fails if one appears.
+ */
+
+const ADDRESS_IN_TEXT = /[^\s@<>()]+@[^\s@<>()]+\.[^\s@<>().,;:]+/g;
+const PHONE_IN_TEXT = /(?:\+|\b0)\d[\d ()/-]{6,}\d/g;
+
+/** First sentence of a delivery error with anything that looks like an address or a number removed. */
+function failureReason(raw: string | null): string {
+  const first = (raw ?? '').split(/(?<=[.!?])\s+/)[0]?.trim() ?? '';
+  const clean = first.replace(ADDRESS_IN_TEXT, '[e-naslov]').replace(PHONE_IN_TEXT, '[telefon]');
+  return clean || 'Razlog ni znan.';
 }
 
-function adminErrors(db: Db, account: Account): { at: string; text: string }[] {
-  const errors: { at: string; text: string }[] = [];
+function adminErrors(db: Db, account: Account): AdminErrorLine[] {
+  const errors: AdminErrorLine[] = [];
+  const agent = db.agents.find((a) => a.account_id === account.id);
   for (const e of db.emailLog) {
     if (e.account_id === account.id && e.status === 'failed') {
-      errors.push({ at: e.sent_at, text: `E-pošta za ${e.to} ni bila dostavljena. ${e.error ?? ''}`.trim() });
+      const what =
+        e.kind === 'visitor_confirmation'
+          ? 'E-pošta obiskovalcu ni bila dostavljena'
+          : e.kind === 'owner_notification'
+            ? 'Obvestilo podjetju ni bilo dostavljeno'
+            : 'Testno sporočilo ni bilo dostavljeno';
+      errors.push({ at: e.sent_at, kind: 'email', text: `${what}. Razlog: ${failureReason(e.error)}` });
     }
   }
   for (const s of db.sources) {
     if (s.account_id === account.id && s.status === 'error') {
-      errors.push({ at: account.period_start, text: `Vir »${s.title}«: ${s.error ?? 'napaka pri branju.'}` });
+      // The moment is the last successful read, if there ever was one — never an invented time.
+      errors.push({
+        at: s.last_synced_at,
+        kind: 'source',
+        text: `Vira »${s.title}« ni bilo mogoče prebrati. ${s.error ?? ''}`.trim(),
+      });
     }
   }
   for (const i of db.invoices) {
     if (i.account_id === account.id && i.status === 'failed') {
-      errors.push({ at: i.issued_at, text: `Plačilo računa ${i.number} ni uspelo. Agent je začasno ustavljen.` });
+      errors.push({
+        at: i.issued_at,
+        kind: 'payment',
+        text: `Plačilo računa ${i.number} ni uspelo.${
+          agent?.pause_reasons.includes('payment') ? ' Agent je zato začasno ustavljen.' : ''
+        }`,
+      });
     }
   }
-  return errors.sort((a, b) => b.at.localeCompare(a.at));
+  // Newest first; lines without a known moment go last.
+  return errors.sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''));
+}
+
+function adminRow(db: Db, account: Account): AdminAccountRow {
+  const agent = db.agents.find((a) => a.account_id === account.id);
+  const owner = db.users.find((u) => u.account_id === account.id && u.account_role === 'owner');
+  let last: string | null = null;
+  for (const c of db.conversations) {
+    if (c.account_id === account.id && (last === null || c.started_at > last)) last = c.started_at;
+  }
+  return {
+    account,
+    plan: planByKey(db.plans, account.plan_key),
+    agent_status: agent?.status ?? 'draft',
+    agent_paused_by: agent?.paused_by ?? null,
+    owner_name: owner?.name ?? '',
+    owner_email: owner?.email ?? '',
+    estimated_cost_eur: Math.round(account.minutes_used * SAMPLE_COST_PER_MINUTE_EUR * 100) / 100,
+    last_conversation_at: last,
+    error_count: adminErrors(db, account).length,
+  };
 }
 
 export function adminListAccounts(): Promise<AdminAccountRow[]> {
@@ -1040,7 +1531,7 @@ export function adminListAccounts(): Promise<AdminAccountRow[]> {
   });
 }
 
-/** null when the account does not exist. */
+/** null when the account does not exist. Numbers and non-personal facts only (see the rule above). */
 export function adminGetAccount(id: Id): Promise<AdminAccountDetail | null> {
   return call(() => {
     const db = getState();
@@ -1049,33 +1540,74 @@ export function adminGetAccount(id: Id): Promise<AdminAccountDetail | null> {
     const agent = db.agents.find((a) => a.account_id === id);
     if (!account || !agent) return null;
     const sources = db.sources.filter((s) => s.account_id === id);
-    const conversations = db.conversations
-      .filter((c) => c.account_id === id)
-      .sort((a, b) => b.started_at.localeCompare(a.started_at));
+    const period = periodStats(db, account);
     return {
       ...adminRow(db, account),
-      agent,
-      users: db.users.filter((u) => u.account_id === id),
+      agent: {
+        name: agent.name,
+        language: agent.language,
+        allowed_domain: agent.allowed_domain,
+        elevenlabs_agent_id: agent.elevenlabs_agent_id,
+        auto_sync_days: agent.auto_sync_days,
+        last_sync_at: agent.last_sync_at,
+      },
+      team_size: db.users.filter((u) => u.account_id === id).length,
       sources_total: sources.length,
       sources_included: sources.filter((s) => s.included).length,
-      conversations_total: conversations.length,
-      recent_conversations: conversations.slice(0, 5),
+      sources_failed: sources.filter((s) => s.status === 'error').length,
+      conversations_total: db.conversations.filter((c) => c.account_id === id).length,
+      period: {
+        start: period.period_start,
+        end: period.period_end,
+        conversations: period.counts,
+        leads: period.leads,
+        bookings: period.bookings,
+        minutes_used: period.minutes_used,
+        minutes_included: period.minutes_included,
+      },
       errors: adminErrors(db, account),
     };
   });
 }
 
+/**
+ * The ADMIN's pause. It is one of four independent reasons (PausedBy): resuming here lifts
+ * only the admin's own pause. If a failed payment, used-up minutes or the customer's own
+ * pause still hold the agent, the result says so and the agent stays paused; and when the
+ * admin never paused it, there is nothing to lift and the call is refused.
+ */
 export function adminSetPaused(id: Id, paused: boolean): Promise<ActionResult> {
   return call(() => {
     const db = getState();
     requireAdmin(db);
     const account = db.accounts.find((a) => a.id === id);
-    if (!account) throw new ApiError('not_found', 'Tega računa ni več.');
-    patchAgent(id, { status: paused ? 'paused' : 'active' });
+    const agent = db.agents.find((a) => a.account_id === id);
+    if (!account || !agent) throw new ApiError('not_found', 'Tega uporabniškega računa ni več.');
+    if (paused) {
+      if (agent.status === 'draft') {
+        throw new ApiError('invalid', 'Agent je še osnutek in ne odgovarja obiskovalcem, zato ga ni treba ustaviti.');
+      }
+      setPause(id, 'admin', true);
+      return simulated(
+        `Predogled: agent uporabniškega računa ${account.name} je ustavljen samo v vzorčnih podatkih. V polni različici se ustavi tudi pravi agent.`,
+      );
+    }
+    if (!agent.pause_reasons.includes('admin')) {
+      const why = agent.paused_by ? ` ${PAUSED_BY[agent.paused_by].label}.` : '';
+      throw new ApiError(
+        'invalid',
+        `Tega agenta ni ustavil skrbnik, zato ga tukaj ni mogoče vklopiti.${why}`,
+      );
+    }
+    setPause(id, 'admin', false);
+    const after = getState().agents.find((a) => a.account_id === id);
+    if (after?.status === 'paused' && after.paused_by) {
+      return simulated(
+        `Predogled: skrbniška ustavitev je odstranjena, agent pa ostaja ustavljen. ${PAUSED_BY[after.paused_by].label}.`,
+      );
+    }
     return simulated(
-      paused
-        ? `Predogled: agent računa ${account.name} je označen kot ustavljen. Pravi agent pri ElevenLabs ni bil ustavljen.`
-        : `Predogled: agent računa ${account.name} je označen kot aktiven. Pravi agent pri ElevenLabs ni bil spremenjen.`,
+      `Predogled: agent uporabniškega računa ${account.name} je znova vklopljen samo v vzorčnih podatkih. V polni različici se vklopi tudi pravi agent.`,
     );
   }, 400);
 }

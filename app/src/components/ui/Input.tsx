@@ -7,6 +7,12 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   prefix?: ReactNode;
   /** small text or icon inside the field, after the value (e.g. "min") */
   suffix?: ReactNode;
+  /**
+   * A BUTTON inside the field, at its end (clear the search, show the password): pass an
+   * <IconButton size="sm" …/>. It has its own focus ring — the field's outline lights up only
+   * while the text input itself has the focus, never because the button inside it does.
+   */
+  trailing?: ReactNode;
   /** use the mono font for codes, ids and addresses */
   mono?: boolean;
 }
@@ -16,7 +22,7 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
  * `className` sets the width of the whole control (default: full width).
  */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { prefix, suffix, mono = false, className, type = 'text', ...rest },
+  { prefix, suffix, trailing, mono = false, className, type = 'text', ...rest },
   ref,
 ) {
   const control = useFieldControl(rest);
@@ -30,16 +36,17 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     'aria-required': rest.required ?? control.required,
   };
 
-  if (!prefix && !suffix) {
+  if (!prefix && !suffix && !trailing) {
     return <input {...shared} className={cn(CONTROL_CLASS, 'h-10 px-3', mono && 'font-mono text-sm', className)} />;
   }
 
-  // With an affix the wrapper carries the border and the focus ring.
+  // With an affix the wrapper carries the border and the focus ring. The ring follows the
+  // INPUT's focus (`has-[input:focus-visible]`), not focus anywhere inside the wrapper.
   return (
     <div
       className={cn(
         'flex h-10 w-full min-w-0 items-center rounded border border-border-strong bg-surface transition-colors duration-100',
-        'hover:border-fg-subtle focus-within:border-ring focus-within:outline focus-within:outline-2 focus-within:outline-ring',
+        'hover:border-fg-subtle has-[input:focus-visible]:border-ring has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-ring',
         control['aria-invalid'] ? 'border-danger' : null,
         rest.disabled ? 'bg-surface-2' : null,
         className,
@@ -53,13 +60,16 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         className={cn(
           'h-full min-w-0 flex-1 bg-transparent px-3 text-base text-fg outline-none placeholder:text-fg-subtle',
           prefix ? 'pl-1.5' : null,
-          suffix ? 'pr-1.5' : null,
+          suffix || trailing ? 'pr-1.5' : null,
           mono && 'font-mono text-sm',
         )}
       />
       {suffix ? (
-        <span className="flex shrink-0 select-none items-center pr-3 text-sm text-fg-subtle">{suffix}</span>
+        <span className={cn('flex shrink-0 select-none items-center text-sm text-fg-subtle', trailing ? 'pr-1' : 'pr-3')}>
+          {suffix}
+        </span>
       ) : null}
+      {trailing ? <span className="flex shrink-0 items-center pr-1">{trailing}</span> : null}
     </div>
   );
 });

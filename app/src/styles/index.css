@@ -1,3 +1,4 @@
+@import './fonts.css';
 @import './tokens.css';
 
 @tailwind base;
@@ -30,15 +31,55 @@
     overflow-wrap: break-word;
   }
 
+  /* Only the wrapping STYLE is set here. The shorthand `text-wrap: pretty` would also set
+     text-wrap-mode: wrap on every <p> and so undo an inherited `white-space: nowrap`
+     (a <p> inside a truncated or no-wrap parent would wrap again). */
   h1,
   h2,
   h3,
   h4 {
-    text-wrap: balance;
+    text-wrap-style: balance;
   }
 
   p {
-    text-wrap: pretty;
+    text-wrap-style: pretty;
+  }
+
+  /*
+   * THE FRAME RULE. Every scrolling box is the positioning context of what is inside it.
+   * Visually hidden elements (`sr-only`, the hidden native <select> of the Select primitive,
+   * the hidden radio of a ChoiceCard) are `position: absolute`; without a positioned
+   * ancestor they are laid out against the PAGE, so a hidden input far down a scrolled
+   * <main> made the whole document taller than the window and the app frame scrolled away.
+   * The attribute selectors cover every Tailwind overflow utility, also with a breakpoint
+   * prefix; `absolute` / `fixed` / `sticky` on the same element still win (utilities come later).
+   * The shells add the second half: their root is `relative overflow-hidden`.
+   * scripts/sweep.mjs fails ("FRAME") when an app, admin or wizard page is taller than the window.
+   */
+  main,
+  [data-scroll-root],
+  [class*='overflow-y-auto'],
+  [class*='overflow-x-auto'],
+  [class*='overflow-auto'],
+  [class*='overflow-y-scroll'],
+  [class*='overflow-x-scroll'],
+  [class*='overflow-scroll'] {
+    position: relative;
+  }
+
+  /* The search field draws its own clear button; the browser's one is not themed. */
+  input[type='search']::-webkit-search-cancel-button,
+  input[type='search']::-webkit-search-decoration,
+  input[type='search']::-webkit-search-results-button,
+  input[type='search']::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
+  }
+
+  input[type='search'] {
+    -webkit-appearance: none;
+    appearance: none;
   }
 
   /* One focus style for everything that can take keyboard focus. */
@@ -120,5 +161,86 @@
   /* Numbers in columns line up. */
   .nums {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* A text link or small control that must be easy to hit with a finger: at least 40px tall
+     on touch screens, unchanged with a mouse. Add it to inline links in lists and cards. */
+  .tap {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  @media (pointer: coarse) {
+    .tap {
+      min-height: 2.5rem;
+    }
+  }
+
+  /*
+   * <Table stackBelow={n}>: when the table's own box is narrower than n px, every row
+   * becomes a small card and every cell a "label: value" line (the label comes from
+   * <TD label="…">). Nothing scrolls sideways and nothing is hidden off screen.
+   */
+  /* The class is doubled in the selectors below on purpose: it lifts them above Tailwind's
+     variant utilities on the cells (`sm:first:pl-5` has two classes' worth of specificity). */
+  .table-stacked {
+    display: block;
+  }
+
+  .table-stacked.table-stacked > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .table-stacked.table-stacked > tbody {
+    display: block;
+  }
+
+  .table-stacked.table-stacked > tbody > tr {
+    display: block;
+    padding: 0.75rem 1rem;
+  }
+
+  .table-stacked.table-stacked > tbody > tr > td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.1875rem 0;
+    text-align: right;
+    white-space: normal;
+  }
+
+  .table-stacked.table-stacked > tbody > tr > td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    max-width: 45%;
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+    color: var(--fg-subtle);
+    text-align: left;
+  }
+
+  /* The first cell is the name of the row: full width, left, no label. */
+  .table-stacked.table-stacked > tbody > tr > td:first-child {
+    display: block;
+    padding-bottom: 0.375rem;
+    text-align: left;
+    font-weight: 500;
+  }
+
+  .table-stacked.table-stacked > tbody > tr > td:first-child::before {
+    content: none;
+  }
+
+  /* A cell without a label (row actions) takes the whole line, aligned left. */
+  .table-stacked.table-stacked > tbody > tr > td:not([data-label]):not(:first-child) {
+    justify-content: flex-start;
+    padding-top: 0.5rem;
+    text-align: left;
   }
 }

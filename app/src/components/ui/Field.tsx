@@ -1,5 +1,5 @@
 import { createContext, useContext, useId, type ReactNode } from 'react';
-import { CircleAlert } from 'lucide-react';
+import { CircleAlert, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 interface FieldContextValue {
@@ -37,6 +37,12 @@ export interface FieldProps {
   hint?: ReactNode;
   /** what is wrong and what to do; replaces the hint and marks the control invalid */
   error?: ReactNode;
+  /**
+   * Something the person should know but that does NOT block saving ("V pozdravu ni navedeno,
+   * da je agent AI pomočnik."). Shown in the warning tone in place of the hint; the control
+   * is not marked invalid. An `error` wins over it.
+   */
+  warning?: ReactNode;
   required?: boolean;
   /** shown after the label for fields people may skip */
   optional?: boolean;
@@ -53,12 +59,23 @@ export interface FieldProps {
  *     <Input type="email" value={v} onChange={…} />
  *   </Field>
  */
-export function Field({ label, hint, error, required = false, optional = false, id, className, children }: FieldProps) {
+export function Field({
+  label,
+  hint,
+  error,
+  warning,
+  required = false,
+  optional = false,
+  id,
+  className,
+  children,
+}: FieldProps) {
   const auto = useId();
   const controlId = id ?? `f${auto}`;
   const hintId = `${controlId}-hint`;
   const errorId = `${controlId}-error`;
-  const describedBy = error ? errorId : hint ? hintId : undefined;
+  const warningId = `${controlId}-warning`;
+  const describedBy = error ? errorId : warning ? warningId : hint ? hintId : undefined;
 
   return (
     <FieldContext.Provider value={{ id: controlId, describedBy, invalid: Boolean(error), required }}>
@@ -72,6 +89,11 @@ export function Field({ label, hint, error, required = false, optional = false, 
           <p id={errorId} className="flex items-start gap-1.5 text-sm text-danger">
             <CircleAlert size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
             <span>{error}</span>
+          </p>
+        ) : warning ? (
+          <p id={warningId} role="status" className="flex items-start gap-1.5 text-sm text-warning">
+            <TriangleAlert size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
+            <span>{warning}</span>
           </p>
         ) : hint ? (
           <p id={hintId} className="text-sm text-fg-subtle">

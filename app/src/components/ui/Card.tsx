@@ -45,11 +45,13 @@ export function CardHeader({ title, description, action, divider = false, as: He
         className,
       )}
     >
-      <div className="min-w-0 flex-1">
+      {/* The text keeps at least 12rem: when the action does not fit beside it (a phone), the
+          action moves to its own line instead of squeezing the title into a narrow column. */}
+      <div className="min-w-0 flex-1 basis-48">
         <Heading className="text-md font-semibold text-fg">{title}</Heading>
         {description ? <p className="mt-0.5 text-sm text-fg-muted">{description}</p> : null}
       </div>
-      {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
+      {action ? <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{action}</div> : null}
     </div>
   );
 }

@@ -18,6 +18,7 @@ import * as api from '@/data/api';
 import {
   formatDateLong,
   formatDuration,
+  formatTimecode,
   formatRelativeDateTime,
   formatTime,
   plural,
@@ -374,7 +375,7 @@ export default function ConversationDetail() {
                     <TranscriptBubble
                       role={turn.role}
                       speaker={turn.role === 'agent' ? agentName : 'Obiskovalec'}
-                      time={formatDuration(turn.timeSec)}
+                      time={formatTimecode(turn.timeSec)}
                     >
                       {turn.text}
                     </TranscriptBubble>

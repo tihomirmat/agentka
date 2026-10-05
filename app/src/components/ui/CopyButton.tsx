@@ -1,6 +1,6 @@
 import type { RefObject } from 'react';
 import { Check, Copy, TextCursorInput } from 'lucide-react';
-import { useCopy } from '@/lib/useCopy';
+import { copyFallbackHint, useCopy } from '@/lib/useCopy';
 import { Button, type ButtonSize, type ButtonVariant } from './Button';
 
 export interface CopyButtonProps {
@@ -10,12 +10,18 @@ export interface CopyButtonProps {
   copiedLabel?: string;
   /**
    * Element that shows the same text. If the browser refuses clipboard access, this
-   * element gets selected so the person can press Ctrl/Cmd+C.
+   * element gets selected so the person can copy it by hand.
    */
   targetRef?: RefObject<HTMLElement>;
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** Called ONLY when the clipboard really accepted the text. Tick "copied" checklists here. */
   onCopied?: () => void;
+  /**
+   * Called when the clipboard was refused and the text was only selected. Word it honestly,
+   * e.g. with copyFallbackSentence('Kodo') from '@/components/ui'.
+   */
+  onFallback?: () => void;
   className?: string;
 }
 
@@ -28,6 +34,7 @@ export function CopyButton({
   variant = 'secondary',
   size = 'sm',
   onCopied,
+  onFallback,
   className,
 }: CopyButtonProps) {
   const { copy, state } = useCopy();
@@ -38,12 +45,14 @@ export function CopyButton({
       className={className}
       icon={state === 'copied' ? Check : state === 'selected' ? TextCursorInput : Copy}
       onClick={() => {
-        copy(text, targetRef?.current);
-        onCopied?.();
+        void copy(text, targetRef?.current).then((outcome) => {
+          if (outcome === 'copied') onCopied?.();
+          else onFallback?.();
+        });
       }}
     >
       <span aria-live="polite">
-        {state === 'copied' ? copiedLabel : state === 'selected' ? 'Označeno, pritisnite Ctrl+C' : label}
+        {state === 'copied' ? copiedLabel : state === 'selected' ? copyFallbackHint() : label}
       </span>
     </Button>
   );

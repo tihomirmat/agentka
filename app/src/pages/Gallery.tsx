@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BookOpenText,
@@ -13,7 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import { BRAND } from '@/brand';
-import { formatDuration, formatEur, formatMinutesOf, formatRelativeDateTime } from '@/data/format';
+import { formatDuration, formatEur, formatMinutesOf, formatRelativeDateTime, formatTimecode } from '@/data/format';
 import {
   AGENT_STATUS,
   BOOKING_MODE,
@@ -77,6 +77,8 @@ import {
   useToast,
   Waveform,
 } from '@/components/ui';
+import { GalleryAdditions } from './gallery/Additions';
+import { Row, Section } from './gallery/parts';
 
 /* The gallery is a review page: fixed example rows live here, not in the data layer. */
 const NOW = Date.now();
@@ -107,11 +109,12 @@ const COLOR_TOKENS: { name: string; swatch: string; note: string }[] = [
   { name: 'success-soft', swatch: 'bg-success-soft', note: '' },
   { name: 'warning', swatch: 'bg-warning', note: 'opozorilo' },
   { name: 'warning-soft', swatch: 'bg-warning-soft', note: '' },
-  { name: 'danger', swatch: 'bg-danger', note: 'napaka, brisanje' },
+  { name: 'danger', swatch: 'bg-danger', note: 'napaka (besedilo, ikona)' },
+  { name: 'danger-solid', swatch: 'bg-danger-solid', note: 'gumb za brisanje' },
   { name: 'danger-soft', swatch: 'bg-danger-soft', note: '' },
   { name: 'info', swatch: 'bg-info', note: 'obvestilo' },
   { name: 'info-soft', swatch: 'bg-info-soft', note: '' },
-  { name: 'inverse', swatch: 'bg-inverse', note: 'namigi, skrbniški trak' },
+  { name: 'inverse', swatch: 'bg-inverse', note: 'namigi' },
   { name: 'ring', swatch: 'bg-ring', note: 'fokus' },
 ];
 
@@ -126,25 +129,6 @@ const TYPE_SCALE: { cls: string; name: string; use: string; display?: boolean }[
   { cls: 'text-sm', name: 'text-sm', use: 'namigi, drugotno' },
   { cls: 'text-xs', name: 'text-xs', use: 'oznake, glave tabel' },
 ];
-
-function Section({ id, title, note, children }: { id: string; title: string; note?: string; children: ReactNode }) {
-  return (
-    <section id={id} className="min-w-0 border-t border-border py-8">
-      <h2 className="font-display text-lg font-semibold text-fg">{title}</h2>
-      {note ? <p className="mt-1 max-w-prose text-sm text-fg-muted">{note}</p> : null}
-      <div className="mt-5 min-w-0">{children}</div>
-    </section>
-  );
-}
-
-function Row({ label, children }: { label?: string; children: ReactNode }) {
-  return (
-    <div className="mb-4 min-w-0 last:mb-0">
-      {label ? <p className="eyebrow mb-2">{label}</p> : null}
-      <div className="flex min-w-0 flex-wrap items-center gap-3">{children}</div>
-    </div>
-  );
-}
 
 type ThemeChoice = 'system' | 'light' | 'dark';
 
@@ -221,7 +205,7 @@ export default function Gallery() {
           }
         />
 
-        <Section id="barve" title="Barve" note="Vse barve so žetoni iz tokens.css. Ena barva znamke (petrolej modra), štiri pomenske barve, hladni sivi toni.">
+        <Section id="barve" title="Barve" note="Vse barve so žetoni iz tokens.css. Ena barva znamke (petrolejsko modra), štiri pomenske barve, hladni sivi toni.">
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
             {COLOR_TOKENS.map((t) => (
               <li key={t.name} className="min-w-0">
@@ -293,7 +277,7 @@ export default function Gallery() {
             <Button variant="primary" icon={Plus}>
               Dodaj besedilo
             </Button>
-            <Button icon={RefreshCw}>Sinhroniziraj</Button>
+            <Button icon={RefreshCw}>Znova preberi strani</Button>
             <Button
               variant="primary"
               loading={loading}
@@ -417,10 +401,10 @@ export default function Gallery() {
             <Card>
               <CardHeader
                 title="Viri znanja"
-                description="15 strani, zadnja sinhronizacija včeraj ob 06:30"
+                description="15 vključenih strani, zadnjič prebrane včeraj ob 06:30"
                 action={
                   <Button size="sm" icon={RefreshCw}>
-                    Sinhroniziraj
+                    Znova preberi strani
                   </Button>
                 }
               />
@@ -633,16 +617,14 @@ export default function Gallery() {
               Odpri nevarno potrditev
             </Button>
           </Row>
-          <Row label="Obvestila (toast)">
+          <Row label="Obvestila (toast): zgoraj desno, na telefonu zgoraj na sredini; največ eno na vrsto">
             <Button onClick={() => toast.success('Nastavitve so shranjene.')}>Uspeh</Button>
             <Button
               onClick={() => toast.error('Shranjevanje ni uspelo. Preverite internetno povezavo in poskusite znova.')}
             >
               Napaka
             </Button>
-            <Button onClick={() => toast.info('Predogled: povezava z Google Koledarjem je simulirana.')}>
-              Obvestilo o predogledu
-            </Button>
+            <Button onClick={() => toast.info('Agent še bere 3 strani. Seznam se osveži sam.')}>Nevtralno obvestilo</Button>
           </Row>
           <Row label="Namig in meni">
             <Tooltip content="Minute se štejejo od začetka do konca pogovora.">
@@ -655,7 +637,7 @@ export default function Gallery() {
               <DropdownMenuContent align="start">
                 <DropdownMenuLabel>Cenik storitev</DropdownMenuLabel>
                 <DropdownMenuItem icon={Pencil}>Uredi besedilo</DropdownMenuItem>
-                <DropdownMenuItem icon={RefreshCw}>Sinhroniziraj znova</DropdownMenuItem>
+                <DropdownMenuItem icon={RefreshCw}>Znova preberi stran</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem icon={Trash2} tone="danger">
                   Odstrani vir
@@ -782,7 +764,7 @@ export default function Gallery() {
           </div>
         </Section>
 
-        <Section id="pripomocek" title="Pripomoček in zapis pogovora" note="Predogled pripomočka, kot ga vidi obiskovalec, in oblački shranjenega pogovora. Pripomoček v barvi stranke uporablja njeno barvo, ne naših žetonov.">
+        <Section id="pripomocek" title="Pripomoček in prepis pogovora" note="Predogled pripomočka, kot ga vidi obiskovalec, in oblački shranjenega pogovora. Pripomoček ne sledi naši temi: telo je vedno svetlo, glava v barvi stranke.">
           <div className="grid min-w-0 gap-6 lg:grid-cols-2">
             <div className="flex min-w-0 flex-wrap gap-5">
               <AgentWidget
@@ -792,21 +774,23 @@ export default function Gallery() {
               />
             </div>
             <Card>
-              <CardHeader title="Zapis pogovora" divider />
+              <CardHeader title="Prepis pogovora" divider />
               <CardBody className="flex flex-col gap-4 pt-4">
-                <TranscriptBubble role="agent" speaker="Jan" time={formatDuration(0)}>
+                <TranscriptBubble role="agent" speaker="Jan" time={formatTimecode(0)}>
                   Pozdravljeni, sem Jan, AI pomočnik agencije Spletnost. Kako vam lahko pomagam?
                 </TranscriptBubble>
-                <TranscriptBubble role="visitor" speaker="Obiskovalec" time={formatDuration(9)}>
+                <TranscriptBubble role="visitor" speaker="Obiskovalec" time={formatTimecode(9)}>
                   Zanima me, koliko stane vodenje Google oglasov.
                 </TranscriptBubble>
-                <TranscriptBubble role="agent" speaker="Jan" time={formatDuration(17)}>
-                  Vodenje Google oglaševanja stane od sto devetdeset evrov na mesec. Proračun za oglase plačate posebej.
+                <TranscriptBubble role="agent" speaker="Jan" time={formatTimecode(17)}>
+                  Vodenje Google oglaševanja stane od sto devetdesetih evrov na mesec. Proračun za oglase plačate posebej.
                 </TranscriptBubble>
               </CardBody>
             </Card>
           </div>
         </Section>
+
+        <GalleryAdditions />
 
         <Section id="carovnik" title="Korak čarovnika" note="Telo enega koraka z režami Nazaj, Preskoči in Naprej. Vrstico s petimi koraki riše WizardShell.">
           <Card>

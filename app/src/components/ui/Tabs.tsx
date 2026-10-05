@@ -13,11 +13,20 @@ import { cn } from '@/lib/cn';
  */
 export const Tabs = RadixTabs.Root;
 
+/**
+ * The row of tab names. On a wide screen: names on one line with the accent line under the
+ * active one. On a phone (under 480px) the names become chips that WRAP onto more lines, so
+ * nothing scrolls sideways, no name is hidden and no stray rule hangs under a wrapped row.
+ */
 export function TabsList({ className, ...rest }: ComponentPropsWithoutRef<typeof RadixTabs.List>) {
   return (
-    <div className="relative min-w-0 overflow-x-auto border-b border-border">
-      <RadixTabs.List className={cn('flex min-w-max gap-5', className)} {...rest} />
-    </div>
+    <RadixTabs.List
+      className={cn(
+        'flex min-w-0 flex-wrap gap-x-5 border-b border-border max-[479px]:gap-2 max-[479px]:border-b-0',
+        className,
+      )}
+      {...rest}
+    />
   );
 }
 
@@ -30,8 +39,11 @@ export function TabsTrigger({ className, children, count, ...rest }: TabsTrigger
   return (
     <RadixTabs.Trigger
       className={cn(
-        '-mb-px inline-flex h-10 items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-0.5 text-base font-medium text-fg-muted transition-colors duration-100',
+        '-mb-px inline-flex h-10 max-w-full items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-0.5 text-base font-medium text-fg-muted transition-colors duration-100',
         'hover:text-fg data-[state=active]:border-accent data-[state=active]:text-fg',
+        // phone: a chip instead of an underlined name
+        'max-[479px]:mb-0 max-[479px]:rounded max-[479px]:border max-[479px]:border-b max-[479px]:border-border-strong max-[479px]:px-3 max-[479px]:text-sm',
+        'max-[479px]:data-[state=active]:border-accent max-[479px]:data-[state=active]:bg-accent-soft max-[479px]:data-[state=active]:text-accent-soft-fg',
         className,
       )}
       {...rest}
@@ -44,6 +56,15 @@ export function TabsTrigger({ className, children, count, ...rest }: TabsTrigger
   );
 }
 
+/**
+ * One panel. An inactive panel is not rendered and takes NO space — also when the page gives
+ * it a display class (`flex`, `grid`), which would otherwise beat the `hidden` attribute.
+ */
 export function TabsContent({ className, ...rest }: ComponentPropsWithoutRef<typeof RadixTabs.Content>) {
-  return <RadixTabs.Content className={cn('min-w-0 pt-5 focus-visible:outline-offset-4', className)} {...rest} />;
+  return (
+    <RadixTabs.Content
+      className={cn('min-w-0 pt-5 focus-visible:outline-offset-4 data-[state=inactive]:hidden', className)}
+      {...rest}
+    />
+  );
 }

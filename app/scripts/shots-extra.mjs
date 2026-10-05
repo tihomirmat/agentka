@@ -1,28 +1,14 @@
 // Extra review shots of the foundation: shells that need a login and open overlays.
-// Same server and font handling as shots.mjs:  npx vite preview --port 4173 &  node scripts/shots-extra.mjs
+// Same server as shots.mjs:  npx vite preview --port 4173 &  node scripts/shots-extra.mjs
 import { chromium } from 'playwright';
-import { execSync } from 'node:child_process';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { findChrome, login } from './lib.mjs';
 
 const BASE = process.env.SHOTS_BASE ?? 'http://localhost:4173';
 const OUT = resolve(process.env.SHOTS_OUT ?? '../shots/foundation');
 mkdirSync(OUT, { recursive: true });
-const chrome = execSync('find /opt/pw-browsers -name chrome -type f | head -1').toString().trim() || undefined;
-const browser = await chromium.launch({ executablePath: chrome });
-
-const fontCss = [
-  ['@fontsource-variable/bricolage-grotesque', 'opsz.css'],
-  ['@fontsource-variable/instrument-sans', 'wght.css'],
-  ['@fontsource/ibm-plex-mono', '400.css'],
-  ['@fontsource/ibm-plex-mono', '500.css'],
-]
-  .map(([pkg, file]) =>
-    readFileSync(resolve('node_modules', pkg, file), 'utf8')
-      .replace(/ Variable'/g, "'")
-      .replace(/url\(\.\/files\//g, `url(https://fonts.gstatic.com/local/${pkg}/`),
-  )
-  .join('\n');
+const browser = await chromium.launch({ executablePath: findChrome() });
 
 async function overflow(page) {
   return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -34,15 +20,6 @@ for (const theme of ['light', 'dark']) {
     { name: '400', width: 400, height: 800 },
   ]) {
     const context = await browser.newContext({ viewport: vp, colorScheme: theme, locale: 'sl-SI', timezoneId: 'Europe/Ljubljana' });
-    await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: fontCss }));
-    await context.route('https://fonts.gstatic.com/**', (r) => {
-      const m = new URL(r.request().url()).pathname.match(/^\/local\/(.+)\/([^/]+)$/);
-      try {
-        return r.fulfill({ status: 200, contentType: 'font/woff2', headers: { 'access-control-allow-origin': '*' }, body: readFileSync(resolve('node_modules', m[1], 'files', m[2])) });
-      } catch {
-        return r.abort();
-      }
-    });
     const page = await context.newPage();
     page.on('console', (m) => m.type() === 'error' && console.log('  console error:', m.text()));
     page.on('pageerror', (e) => console.log('  page error:', e.message));
@@ -60,12 +37,9 @@ for (const theme of ['light', 'dark']) {
     await page.goto(`${BASE}/#/app/kontakti`);
     await page.waitForURL(/#\/prijava/);
     console.log(`guard-${tag}: /app/kontakti without login → ${new URL(page.url()).hash}`);
-    await page.getByRole('button', { name: 'Prijava' }).click(); // empty form → error
+    await page.locator('form button[type="submit"]').first().click(); // empty form → error
     await snap('x-login-error');
-    await page.getByLabel('E-naslov').fill('marko.jereb@example.si');
-    await page.getByLabel('Geslo').fill('predogled-123');
-    await page.getByRole('button', { name: 'Prijava' }).click();
-    await page.waitForURL(/#\/app\/kontakti/);
+    await login(page, BASE, { expectUrl: /#\/app\/kontakti/ });
     console.log(`guard-${tag}: after login → ${new URL(page.url()).hash}`);
 
     await page.goto(`${BASE}/#/admin`);
@@ -90,7 +64,7 @@ for (const theme of ['light', 'dark']) {
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Uspeh', exact: true }).click();
     await page.getByRole('button', { name: 'Napaka', exact: true }).click();
-    await page.getByRole('button', { name: 'Obvestilo o predogledu' }).click();
+    await page.getByRole('button', { name: 'Nevtralno obvestilo', exact: true }).click();
     await page.getByRole('combobox', { name: 'Glas agenta' }).scrollIntoViewIfNeeded();
     await page.getByRole('combobox', { name: 'Glas agenta' }).click();
     await snap('x-select-toasts');

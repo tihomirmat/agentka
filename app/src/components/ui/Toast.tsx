@@ -8,6 +8,7 @@ interface ToastItem {
   id: number;
   tone: ToastTone;
   message: string;
+  shownAt: number;
 }
 
 /* A module-level list, so toasts can be raised from anywhere without a provider. */
@@ -23,15 +24,21 @@ function emit() {
 function dismiss(id: number) {
   window.clearTimeout(timers.get(id));
   timers.delete(id);
+  if (!items.some((t) => t.id === id)) return;
   items = items.filter((t) => t.id !== id);
   emit();
 }
 
 function show(tone: ToastTone, message: string): number {
   const id = nextId++;
-  // Newest last; never more than three on screen.
-  items = [...items, { id, tone, message }].slice(-3);
-  const ms = tone === 'error' ? 9000 : Math.min(9000, 4000 + message.length * 35);
+  // At most ONE toast per tone: a new "saved" replaces the previous "saved" instead of
+  // stacking up, so there are never more than three and usually one.
+  for (const old of items.filter((t) => t.tone === tone)) {
+    window.clearTimeout(timers.get(old.id));
+    timers.delete(old.id);
+  }
+  items = [...items.filter((t) => t.tone !== tone), { id, tone, message, shownAt: Date.now() }];
+  const ms = tone === 'error' ? 9000 : Math.min(8000, 3500 + message.length * 35);
   timers.set(
     id,
     window.setTimeout(() => dismiss(id), ms),
@@ -40,12 +47,24 @@ function show(tone: ToastTone, message: string): number {
   return id;
 }
 
+/**
+ * Called by the router on every change of page (src/routes.tsx): a toast belongs to the page
+ * it was raised on. Toasts younger than `graceMs` survive — they were raised by the very
+ * action that caused the navigation ("Nastavitev je končana." → Pregled).
+ */
+export function clearToastsOnNavigation(graceMs = 1200): void {
+  const now = Date.now();
+  for (const t of [...items]) {
+    if (now - t.shownAt > graceMs) dismiss(t.id);
+  }
+}
+
 const api = {
-  /** something worked — say what, in one sentence */
+  /** a result that changes what the person sees on the page — say what, in one sentence */
   success: (message: string) => show('success', message),
   /** something failed — say what went wrong and what to do */
   error: (message: string) => show('error', message),
-  /** neutral notice, e.g. the "Predogled: …" message of a simulated action */
+  /** neutral notice. NOT for the result of a simulated outside action: that goes in a <Notice> */
   info: (message: string) => show('info', message),
   dismiss,
 };
@@ -54,6 +73,8 @@ const api = {
  *   const toast = useToast();
  *   toast.success('Nastavitve so shranjene.');
  *   toast.error('Shranjevanje ni uspelo. Preverite povezavo in poskusite znova.');
+ *
+ * When to use a toast and when a <Notice>: CONVENTIONS.md → "How a result is shown".
  */
 export function useToast() {
   return api;
@@ -62,7 +83,11 @@ export function useToast() {
 const ICONS = { success: CircleCheck, error: CircleAlert, info: Info };
 const ICON_TONE = { success: 'text-success', error: 'text-danger', info: 'text-info' };
 
-/** Rendered once, in App.tsx. */
+/**
+ * Rendered once, in App.tsx. The toasts sit at the TOP of the window, under the top bar:
+ * top-right on a wide screen, top-centre on a phone. Never at the bottom — that is where
+ * the save bar, the footers of forms and dialogs and the widget's text field are.
+ */
 export function Toaster() {
   const list = useSyncExternalStore(
     (l) => {
@@ -75,7 +100,7 @@ export function Toaster() {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] flex flex-col items-center gap-2 px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] sm:items-end sm:px-6"
+      className="pointer-events-none fixed inset-x-0 top-[calc(4.5rem+env(safe-area-inset-top,0px))] z-[80] flex flex-col items-center gap-2 px-4 sm:items-end sm:px-6"
       aria-live="polite"
       aria-relevant="additions"
     >
@@ -85,7 +110,7 @@ export function Toaster() {
           <div
             key={t.id}
             role={t.tone === 'error' ? 'alert' : 'status'}
-            className="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border border-border bg-raised py-3 pl-3.5 pr-2 shadow-md motion-safe:animate-rise-in"
+            className="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border border-border bg-raised py-3 pl-3.5 pr-2 shadow-md motion-safe:animate-fade-in"
           >
             <Icon size={18} className={cn('mt-0.5 shrink-0', ICON_TONE[t.tone])} aria-hidden="true" />
             <p className="min-w-0 flex-1 text-base text-fg">{t.message}</p>
@@ -93,7 +118,7 @@ export function Toaster() {
               type="button"
               aria-label="Zapri obvestilo"
               onClick={() => dismiss(t.id)}
-              className="-mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-raised-hover hover:text-fg"
+              className="-my-1.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded text-fg-subtle transition-colors hover:bg-raised-hover hover:text-fg [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
             >
               <X size={16} aria-hidden="true" />
             </button>

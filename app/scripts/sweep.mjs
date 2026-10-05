@@ -4,12 +4,18 @@
 //   node scripts/sweep.mjs
 //
 // Env: SWEEP_BASE (default http://localhost:4173), SWEEP_OUT (default ../shots/review),
-//      SWEEP_COMBOS (default "1440-light,400-light,1440-dark,400-dark").
-// Prints one line per screen: ok / OVERFLOW, and counts console and page errors. Exit code 1 on any problem.
+//      SWEEP_COMBOS (default "1440-light,400-light,1440-dark,400-dark"),
+//      SWEEP_ONLY (comma list of screen-name prefixes, e.g. "app-nastavitve,carovnik").
+// One line per screen. Problems (each makes the exit code 1):
+//   OVERFLOW  the page is wider than the window
+//   FRAME     an app / admin / wizard page makes the DOCUMENT taller than the window, so the
+//             frame (sidebar, top bar) can scroll away — only <main> may scroll there
+//   EXTERNAL  a request left the app's own origin (the build must be self-contained, fonts too)
+//   console and page errors
 import { chromium } from 'playwright';
-import { execSync } from 'node:child_process';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { findChrome, frameProblem, login, registerFresh, settle, watchExternalRequests } from './lib.mjs';
 
 const BASE = process.env.SWEEP_BASE ?? 'http://localhost:4173';
 const OUT = resolve(process.env.SWEEP_OUT ?? '../shots/review');
@@ -17,6 +23,8 @@ const COMBOS = (process.env.SWEEP_COMBOS ?? '1440-light,400-light,1440-dark,400-
   const [w, theme] = c.trim().split('-');
   return { width: Number(w), height: Number(w) >= 900 ? 900 : 800, theme, tag: c.trim() };
 });
+const ONLY = (process.env.SWEEP_ONLY ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const wanted = (name) => ONLY.length === 0 || ONLY.some((p) => name.startsWith(p));
 const TILE = 1800;
 
 const PUBLIC_ROUTES = [
@@ -44,43 +52,6 @@ const APP_ROUTES = [
   ['admin-paketi', '/admin/paketi'],
 ];
 
-function findChrome() {
-  return execSync('find /opt/pw-browsers -name chrome -type f | head -1').toString().trim() || undefined;
-}
-function localFontCss() {
-  const sources = [
-    ['@fontsource-variable/bricolage-grotesque', 'opsz.css'],
-    ['@fontsource-variable/instrument-sans', 'wght.css'],
-    ['@fontsource-variable/instrument-sans', 'wght-italic.css'],
-    ['@fontsource/ibm-plex-mono', '400.css'],
-    ['@fontsource/ibm-plex-mono', '500.css'],
-  ];
-  return sources
-    .map(([pkg, file]) =>
-      readFileSync(resolve('node_modules', pkg, file), 'utf8')
-        .replace(/ Variable'/g, "'")
-        .replace(/url\(\.\/files\//g, `url(https://fonts.gstatic.com/local/${pkg}/`),
-    )
-    .join('\n');
-}
-async function serveFontsLocally(context) {
-  const css = localFontCss();
-  await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: css }));
-  await context.route('https://fonts.gstatic.com/**', (r) => {
-    const m = new URL(r.request().url()).pathname.match(/^\/local\/(.+)\/([^/]+)$/);
-    if (!m) return r.abort();
-    try {
-      return r.fulfill({ status: 200, contentType: 'font/woff2', headers: { 'access-control-allow-origin': '*' }, body: readFileSync(resolve('node_modules', m[1], 'files', m[2])) });
-    } catch {
-      return r.abort();
-    }
-  });
-}
-async function settle(page) {
-  await page.waitForLoadState('networkidle').catch(() => {});
-  await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(450);
-}
 /** The app scrolls inside <main>, so "full page" means: grow the viewport to the content height. */
 async function contentHeight(page) {
   return page.evaluate(() => {
@@ -101,8 +72,15 @@ async function overflow(page) {
 
 let problems = 0;
 const lines = [];
-async function shoot(page, combo, name) {
+/** `frame: true` for routes inside AppShell / AdminShell / WizardShell. */
+async function shoot(page, combo, name, { frame = false } = {}) {
   await settle(page);
+  const flags = [];
+  // The frame is measured at the real window size, BEFORE the viewport is grown for the picture.
+  if (frame) {
+    const bad = await frameProblem(page);
+    if (bad) flags.push(`FRAME ${bad}`);
+  }
   const over = await overflow(page);
   const base = page.viewportSize();
   const h = Math.min(await contentHeight(page), 9000);
@@ -112,7 +90,7 @@ async function shoot(page, combo, name) {
   }
   const over2 = await overflow(page);
   const worst = Math.max(over, over2);
-  if (worst > 0) problems++;
+  if (worst > 0) flags.push(`OVERFLOW ${worst}px`);
   const file = `${OUT}/${name}-${combo.tag}`;
   const total = page.viewportSize().height;
   if (total <= TILE * 1.2) {
@@ -124,7 +102,8 @@ async function shoot(page, combo, name) {
     }
   }
   await page.setViewportSize(base);
-  const line = `${name}-${combo.tag}: ${worst > 0 ? 'OVERFLOW ' + worst + 'px' : 'ok'} (height ${total})`;
+  problems += flags.length;
+  const line = `${name}-${combo.tag}: ${flags.length ? flags.join(', ') : 'ok'} (height ${total}${frame ? ', frame checked' : ''})`;
   lines.push(line);
   console.log(line);
 }
@@ -134,63 +113,55 @@ const browser = await chromium.launch({ executablePath: findChrome() });
 for (const combo of COMBOS) {
   const newContext = async () => {
     const context = await browser.newContext({ viewport: { width: combo.width, height: combo.height }, colorScheme: combo.theme, deviceScaleFactor: 1, locale: 'sl-SI', timezoneId: 'Europe/Ljubljana' });
-    await serveFontsLocally(context);
     const page = await context.newPage();
     page.on('console', (m) => { if (m.type() === 'error') { problems++; console.log(`  console error [${combo.tag}] ${page.url()}: ${m.text()}`); } });
     page.on('pageerror', (e) => { problems++; console.log(`  page error [${combo.tag}] ${page.url()}: ${e.message}`); });
-    return { context, page };
+    const external = watchExternalRequests(page, BASE);
+    const close = async () => {
+      for (const url of new Set(external())) { problems++; console.log(`  EXTERNAL request [${combo.tag}]: ${url}`); }
+      await context.close();
+    };
+    return { page, close };
   };
 
-  // 1. Logged out: public pages.
-  {
-    const { context, page } = await newContext();
+  // 1. Logged out: public pages (they scroll as a document; no frame check).
+  if (PUBLIC_ROUTES.some(([name]) => wanted(name))) {
+    const { page, close } = await newContext();
     for (const [name, route] of PUBLIC_ROUTES) {
+      if (!wanted(name)) continue;
       await page.goto(`${BASE}/#${route}`);
       await shoot(page, combo, name);
     }
-    await context.close();
+    await close();
   }
 
   // 2. Fresh customer: register through the real form, walk the wizard, then the empty app.
-  {
-    const { context, page } = await newContext();
-    await page.goto(`${BASE}/#/registracija`);
-    await settle(page);
-    const fill = async (label, value) => { const f = page.getByLabel(label, { exact: false }).first(); if (await f.count()) await f.fill(value); };
-    await fill('Vaše ime', 'Nina Zupan');
-    await fill('Ime podjetja', 'Cvetličarna Marjetica');
-    await fill('Naslov spletne strani', 'cvetlicarna-marjetica.si');
-    await fill('E-naslov', 'nina@example.si');
-    await fill('Geslo', 'predogled-123');
-    const terms = page.getByRole('checkbox').first();
-    if (await terms.count()) await terms.check().catch(async () => { await terms.click(); });
-    await page.getByRole('button', { name: /Ustvari račun/ }).click();
-    await page.waitForURL(/#\/zacetek\/1/, { timeout: 8000 });
+  if (['carovnik-1', 'carovnik-2', 'carovnik-3', 'carovnik-4', 'carovnik-5', 'prazno-pregled', 'prazno-pogovori'].some(wanted)) {
+    const { page, close } = await newContext();
+    await registerFresh(page, BASE);
     for (let step = 1; step <= 5; step++) {
+      if (!wanted(`carovnik-${step}`)) continue;
       await page.goto(`${BASE}/#/zacetek/${step}`);
-      await shoot(page, combo, `carovnik-${step}`);
+      await shoot(page, combo, `carovnik-${step}`, { frame: true });
     }
-    await page.goto(`${BASE}/#/app/pregled`);
-    await shoot(page, combo, 'prazno-pregled');
-    await page.goto(`${BASE}/#/app/pogovori`);
-    await shoot(page, combo, 'prazno-pogovori');
-    await context.close();
+    for (const [name, route] of [['prazno-pregled', '/app/pregled'], ['prazno-pogovori', '/app/pogovori']]) {
+      if (!wanted(name)) continue;
+      await page.goto(`${BASE}/#${route}`);
+      await shoot(page, combo, name, { frame: true });
+    }
+    await close();
   }
 
   // 3. Sample customer (also platform admin): every app and admin screen.
-  {
-    const { context, page } = await newContext();
-    await page.goto(`${BASE}/#/prijava`);
-    await settle(page);
-    await page.getByLabel('E-naslov').fill('marko.jereb@example.si');
-    await page.getByLabel('Geslo', { exact: true }).fill('predogled-123');
-    await page.getByRole('button', { name: 'Prijava', exact: true }).click();
-    await page.waitForURL(/#\/app\/pregled/, { timeout: 8000 });
+  if (APP_ROUTES.some(([name]) => wanted(name))) {
+    const { page, close } = await newContext();
+    await login(page, BASE);
     for (const [name, route] of APP_ROUTES) {
+      if (!wanted(name)) continue;
       await page.goto(`${BASE}/#${route}`);
-      await shoot(page, combo, name);
+      await shoot(page, combo, name, { frame: true });
     }
-    await context.close();
+    await close();
   }
 }
 await browser.close();

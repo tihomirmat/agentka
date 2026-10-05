@@ -38,9 +38,9 @@ function validate(v: { businessName: string; website: string; email: string; pas
 }
 
 /**
- * Sign-up. api.register creates an empty trial account in the browser (stage 1) and signs
- * the person in; the website address is saved on the account right after, then the
- * person continues in the setup wizard at step 1.
+ * Sign-up. api.register creates an empty trial account in the browser (stage 1), saves the
+ * website address on it and signs the person in; then the person continues in the setup
+ * wizard at step 1.
  */
 export default function Register() {
   const navigate = useNavigate();
@@ -62,7 +62,6 @@ export default function Register() {
   };
 
   const signUp = api.useAction(api.register);
-  const saveWebsite = api.useAction(api.updateAccount);
 
   const values = { businessName, website, email, password, terms };
   const errors = validate(values);
@@ -85,15 +84,15 @@ export default function Register() {
     setBusy(true);
     try {
       const session = await signUp.run({
+        // TODO(R27, page owner): the form still has no "Vaše ime in priimek" field, so the
+        // business name stands in for the owner's name. api.register now takes ownerName.
+        ownerName: businessName.trim(),
         businessName: businessName.trim(),
-        // The sign-up form has no field for the person's own name, and register() needs one.
-        name: businessName.trim(),
+        website: site.url,
         email: email.trim(),
         password,
       });
       if (!session) return;
-      // register() has no website field; keep what the person typed on the new account.
-      await saveWebsite.run({ website_url: site.url });
       navigate('/zacetek/1', { replace: true });
     } finally {
       setBusy(false);

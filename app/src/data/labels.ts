@@ -5,6 +5,8 @@
  *   const s = AGENT_STATUS[agent.status];
  *   <StatusPill tone={s.tone}>{s.label}</StatusPill>
  */
+import { BRAND } from '../brand';
+import { formatMinutes, formatNumber } from './format';
 import type {
   AccountStatus,
   AgentStatus,
@@ -16,6 +18,8 @@ import type {
   KnowledgeSourceStatus,
   KnowledgeSourceType,
   LeadStatus,
+  PausedBy,
+  Plan,
   Weekday,
 } from './types';
 
@@ -33,8 +37,63 @@ export const AGENT_STATUS: Record<AgentStatus, StateLabel> = {
   error: { label: 'Napaka', tone: 'danger' },
 };
 
+/**
+ * What each agent state MEANS, in one sentence: what a visitor of the customer's website
+ * sees in that state. Wherever the state pill is shown with room for a sentence (Pregled,
+ * Nastavitve, the tooltip of the pill in the top bar, the admin detail), print this text —
+ * never write a second explanation of "Osnutek" in a page.
+ */
+export const AGENT_STATUS_HELP: Record<AgentStatus, string> = {
+  draft:
+    'Agent še ni vklopljen. Obiskovalci vaše spletne strani pripomočka ne vidijo, dokler agenta ne vklopite.',
+  active: 'Agent odgovarja obiskovalcem na spletni strani, kjer je nameščen pripomoček.',
+  paused: 'Agent ne sprejema pogovorov. Pripomoček obiskovalcem pove, da pomočnik trenutno ni na voljo.',
+  error:
+    'Agent zaradi napake ne more odgovarjati. Pripomoček obiskovalcem pove, da pomočnik trenutno ni na voljo.',
+};
+
+/** The state with its noun, for places where the pill stands alone: "Agent: aktiven". */
+export function agentStatusText(status: AgentStatus): string {
+  return `Agent: ${AGENT_STATUS[status].label.toLowerCase()}`;
+}
+
+/**
+ * WHO stopped a paused agent (agent.paused_by). The four reasons are kept apart: lifting one
+ * never lifts another. `label` goes next to the pill, `help` says what ends the pause.
+ */
+export const PAUSED_BY: Record<PausedBy, { label: string; help: string }> = {
+  payment: {
+    label: 'Ustavljen zaradi neuspelega plačila',
+    help: 'Zadnje plačilo ni uspelo. Agent se znova vklopi, ko uredite plačilo v razdelku Naročnina.',
+  },
+  limit: {
+    label: 'Ustavljen, ker so minute porabljene',
+    help: 'Vključene minute so porabljene. Agent se znova vklopi, ko izberete večji paket ali ko se začne novo obračunsko obdobje.',
+  },
+  admin: {
+    label: 'Ustavil ga je skrbnik platforme',
+    help: `Agenta je začasno ustavil skrbnik platforme ${BRAND}. Znova ga lahko vklopi samo skrbnik.`,
+  },
+  customer: {
+    label: 'Ustavili ste ga sami',
+    help: 'Agenta ste začasno ustavili sami. Znova ga vklopite v Nastavitvah.',
+  },
+};
+
+/**
+ * The free trial has ONE name. Use `name` in sentences and headings ("Brezplačni preizkus"),
+ * `pill` only inside a StatusPill (ACCOUNT_STATUS.trial.label is the same word).
+ * The numbers come from api.getTrialTerms() and are printed with formatTrialTerms().
+ */
+export const TRIAL = {
+  name: 'Brezplačni preizkus',
+  /** inside a sentence */
+  nameLower: 'brezplačni preizkus',
+  pill: 'Preizkus',
+} as const;
+
 export const ACCOUNT_STATUS: Record<AccountStatus, StateLabel> = {
-  trial: { label: 'Preizkus', tone: 'info' },
+  trial: { label: TRIAL.pill, tone: 'info' },
   active: { label: 'Aktivna', tone: 'success' },
   past_due: { label: 'Plačilo ni uspelo', tone: 'danger' },
   paused_limit: { label: 'Minute porabljene', tone: 'warning' },
@@ -76,7 +135,7 @@ export const BOOKING_MODE: Record<BookingMode, { label: string; description: str
 
 export const SOURCE_STATUS: Record<KnowledgeSourceStatus, StateLabel> = {
   pending: { label: 'V obdelavi', tone: 'info' },
-  synced: { label: 'Sinhronizirano', tone: 'success' },
+  synced: { label: 'Prebrano', tone: 'success' },
   excluded: { label: 'Izključeno', tone: 'neutral' },
   error: { label: 'Napaka', tone: 'danger' },
 };
@@ -94,11 +153,66 @@ export const EMAIL_STATUS: Record<EmailStatus, StateLabel> = {
   pending: { label: 'V pošiljanju', tone: 'info' },
 };
 
+/**
+ * The two e-mails after a conversation have ONE name each. Inside the app the owner reads
+ * about their own message, so it is "Obvestilo vam"; never "Povzetek za vas", "Vam" …
+ */
 export const EMAIL_KIND: Record<EmailKind, string> = {
+  visitor_confirmation: 'Potrditev obiskovalcu',
+  owner_notification: 'Obvestilo vam',
+  test: 'Testno sporočilo',
+};
+
+/** The same two e-mails as named on the PUBLIC pages, where the reader is not yet the owner. */
+export const EMAIL_KIND_PUBLIC: Record<EmailKind, string> = {
   visitor_confirmation: 'Potrditev obiskovalcu',
   owner_notification: 'Obvestilo podjetju',
   test: 'Testno sporočilo',
 };
+
+/** Knowledge sources: the one wording for "not read yet" (after "Zadnja sinhronizacija: …"). */
+export const SYNC_WORDS = {
+  lastLabel: 'Zadnja sinhronizacija',
+  never: 'še ni bila opravljena',
+} as const;
+
+/**
+ * Names of the numbers that count activity. Two numbers that can legitimately differ carry
+ * different, self-explaining names, so "Kontakti 8" never sits next to "S kontaktom 3":
+ *  - *_IN_PERIOD      what happened in the current billing period (Pregled, admin);
+ *  - OUTCOME_COUNT    conversations by their ONE outcome (a booking also leaves a contact,
+ *                     but its outcome is "rezervacija");
+ *  - WITH_CONTACT     conversations in which the visitor left any contact detail.
+ * All of them are computed by api.summarizeConversations / api.getOverviewStats.
+ */
+export const COUNT_LABELS = {
+  conversationsInPeriod: { label: 'Pogovori', sub: 'v tem obdobju' },
+  leadsInPeriod: { label: 'Novi kontakti', sub: 'v tem obdobju' },
+  bookingsInPeriod: { label: 'Nove rezervacije', sub: 'dogovorjene v tem obdobju' },
+  minutesInPeriod: { label: 'Minute', sub: 'v tem obdobju' },
+  outcome: {
+    question: 'Izid: vprašanje',
+    lead: 'Izid: kontakt',
+    booking: 'Izid: rezervacija',
+  } satisfies Record<ConversationOutcome, string>,
+  withContact: 'S kontaktnimi podatki',
+} as const;
+
+/**
+ * What a plan includes, with ONE set of names for the public price list, Naročnina and the
+ * admin screen. "Agenti" is left out on purpose until an account can have more than one agent.
+ */
+export const PLAN_FEATURE_LABELS = {
+  minutes: 'Minute pogovorov',
+  pages: 'Uvožene strani',
+} as const;
+
+export function planFeatureRows(plan: Pick<Plan, 'minutes_included' | 'max_pages'>): { label: string; value: string }[] {
+  return [
+    { label: PLAN_FEATURE_LABELS.minutes, value: `${formatMinutes(plan.minutes_included)} na mesec` },
+    { label: PLAN_FEATURE_LABELS.pages, value: `do ${formatNumber(plan.max_pages)}` },
+  ];
+}
 
 export const WEEKDAYS: { key: Weekday; label: string; short: string }[] = [
   { key: 'mon', label: 'Ponedeljek', short: 'Pon' },

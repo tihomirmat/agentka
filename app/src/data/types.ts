@@ -53,6 +53,13 @@ export interface User {
 export type AgentStatus = 'draft' | 'active' | 'paused' | 'error';
 export type WidgetPosition = 'bottom-right' | 'bottom-left';
 
+/**
+ * Who stopped a paused agent. The reasons are independent: the customer's own pause, a pause
+ * by the platform admin, used-up minutes and a failed payment each have to be lifted by the
+ * one who caused it (labels.ts → PAUSED_BY explains each).
+ */
+export type PausedBy = 'customer' | 'admin' | 'limit' | 'payment';
+
 export interface Agent {
   id: Id;
   account_id: Id;
@@ -64,6 +71,10 @@ export interface Agent {
   first_message: string;
   instructions: string;
   status: AgentStatus;
+  /** The reason to show while status is 'paused' (the weightiest of pause_reasons); otherwise null. */
+  paused_by: PausedBy | null;
+  /** Every pause in force. The agent runs again only when this list is empty. */
+  pause_reasons: PausedBy[];
   allowed_domain: string;
   /** Hex colour of the customer's widget, chosen from WIDGET_COLORS (customer data, not a UI colour). */
   widget_accent_color: string;
@@ -151,6 +162,8 @@ export interface KnowledgeSource {
   chars: number;
   last_synced_at: IsoDate | null;
   error: string | null;
+  /** Why an import suggested leaving this page out ("Pravna stran …"); null for ordinary rows. */
+  note: string | null;
 }
 
 /* ------------------------------------------------------------ Conversations */
@@ -267,15 +280,63 @@ export interface ActionResult {
   simulated: boolean;
 }
 
+/** A voice the customer can choose. Named by its character, never by a person's name. */
+export interface Voice {
+  id: string;
+  /** "Ženski glas, topel" */
+  name: string;
+  description: string;
+  /** decides "AI pomočnik" / "AI pomočnica" in the default greeting */
+  gender: 'm' | 'f';
+}
+
+/** Terms of the free trial (public). */
+export interface TrialTerms {
+  days: number;
+  minutes: number;
+}
+
+/** Whether the agent can be switched on, and what is still missing if not. */
+export interface AgentReadiness {
+  status: AgentStatus;
+  /** true when nothing in `missing` blocks activation */
+  canActivate: boolean;
+  missing: {
+    key: 'sources';
+    /** short name of the missing thing: "Viri znanja" */
+    title: string;
+    /** one sentence: what is missing and why it matters */
+    text: string;
+    /** the one action that fixes it */
+    action: { label: string; to: string };
+  }[];
+}
+
+/**
+ * Conversations counted the one way every screen uses (api.summarizeConversations).
+ * `by_outcome` adds up to `total`; `with_contact` is a different question (see COUNT_LABELS).
+ */
+export interface ConversationCounts {
+  total: number;
+  by_outcome: Record<ConversationOutcome, number>;
+  /** conversations in which the visitor left a name, an e-mail address or a phone number */
+  with_contact: number;
+  duration_sec: number;
+}
+
 /** Numbers for the top of Pregled, for the current billing period. */
 export interface OverviewStats {
   period_start: IsoDate;
   period_end: IsoDate;
+  /** conversations started in the period (= counts.total) */
   conversations: number;
+  /** contacts created in the period */
   leads: number;
+  /** appointments agreed in conversations of the period, without the cancelled ones */
   bookings: number;
   minutes_used: number;
   minutes_included: number;
+  counts: ConversationCounts;
 }
 
 export interface Invoice {
@@ -296,26 +357,66 @@ export interface InstallStatus {
   allowed_domain: string;
 }
 
-/** One row of the admin accounts table. */
+/**
+ * One row of the admin accounts table.
+ *
+ * PRIVACY: admin data holds numbers and non-personal facts only. No visitor name, e-mail
+ * address or phone number, no transcript, summary or topic ever leaves the data layer for
+ * the admin area. The only person named is the owner, as the business contact.
+ * scripts/check-data.mjs fails when a visitor's detail appears in any admin response.
+ */
 export interface AdminAccountRow {
   account: Account;
   plan: Plan | null;
   agent_status: AgentStatus;
+  /** why the agent is paused, when it is */
+  agent_paused_by: PausedBy | null;
+  /** business contact of the account owner */
+  owner_name: string;
   owner_email: string;
   estimated_cost_eur: number;
+  /** TIME of the latest conversation, nothing else about it */
   last_conversation_at: IsoDate | null;
   error_count: number;
 }
 
+export interface AdminErrorLine {
+  /** when it happened; null when the moment is not known (a source that could not be read) */
+  at: IsoDate | null;
+  kind: 'email' | 'source' | 'payment';
+  /** readable line without any visitor address or name */
+  text: string;
+}
+
 export interface AdminAccountDetail extends AdminAccountRow {
-  agent: Agent;
-  users: User[];
+  /** technical facts about the agent — not its texts */
+  agent: {
+    name: string;
+    language: Agent['language'];
+    allowed_domain: string;
+    elevenlabs_agent_id: string | null;
+    auto_sync_days: number;
+    last_sync_at: IsoDate | null;
+  };
+  /** people with access to the account (a count, not a list) */
+  team_size: number;
   sources_total: number;
   sources_included: number;
+  /** sources that could not be read */
+  sources_failed: number;
+  /** all conversations since the account was created */
   conversations_total: number;
-  recent_conversations: Conversation[];
-  /** readable error lines (failed e-mails, source errors, payment problems) */
-  errors: { at: IsoDate; text: string }[];
+  /** the current billing period, counted exactly like the customer's Pregled */
+  period: {
+    start: IsoDate;
+    end: IsoDate;
+    conversations: ConversationCounts;
+    leads: number;
+    bookings: number;
+    minutes_used: number;
+    minutes_included: number;
+  };
+  errors: AdminErrorLine[];
 }
 
 /** The whole in-memory database. Screens never see this type; they use api.ts. */

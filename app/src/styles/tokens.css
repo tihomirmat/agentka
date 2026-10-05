@@ -40,9 +40,11 @@
   --success-soft: #e2f2e9;
   --warning: #8a5a06;
   --warning-soft: #faefd6;
-  --danger: #b02f28;
+  --danger: #b02f28; /* danger as TEXT, icon, border, bar */
   --danger-hover: #93241f;
-  --danger-fg: #ffffff; /* text on --danger */
+  --danger-solid: #b02f28; /* danger as a FILL (the danger button) */
+  --danger-solid-hover: #93241f;
+  --danger-fg: #ffffff; /* text on --danger-solid */
   --danger-soft: #fae6e4;
   --info: #35579c;
   --info-soft: #e5ecf8;
@@ -51,8 +53,17 @@
   --inverse: #10242b;
   --inverse-fg: #eef3f4;
 
-  /* ---- Text on the customer's own widget colour (same in both themes) ---- */
-  --widget-fg: #ffffff;
+  /* ---- The widget preview. It is a picture of what VISITORS see on the customer's website,
+          so it does not follow our theme: these values are the same in light and dark and are
+          deliberately not repeated in the dark blocks below. ---- */
+  --widget-fg: #ffffff; /* text on the customer's own widget colour */
+  --widget-surface: #ffffff; /* body of the widget */
+  --widget-surface-2: #eef2f3; /* the agent's bubbles */
+  --widget-text: #0e1d22;
+  --widget-muted: #586a71;
+  --widget-border: #d3dcde;
+  --widget-border-strong: #81949a;
+  --widget-default: #0a6c8f; /* used when no customer colour is passed */
 
   /* ---- Focus and overlay ---- */
   --ring: #1487b0;
@@ -134,7 +145,9 @@
     --warning-soft: #33270f;
     --danger: #f08a82;
     --danger-hover: #f5a59f;
-    --danger-fg: #2c0b09;
+    --danger-solid: #c2392f;
+    --danger-solid-hover: #cc4036;
+    --danger-fg: #ffffff;
     --danger-soft: #3a1a18;
     --info: #8fb1ec;
     --info-soft: #17253f;
@@ -172,7 +185,9 @@
   --warning-soft: #33270f;
   --danger: #f08a82;
   --danger-hover: #f5a59f;
-  --danger-fg: #2c0b09;
+  --danger-solid: #c2392f;
+  --danger-solid-hover: #cc4036;
+  --danger-fg: #ffffff;
   --danger-soft: #3a1a18;
   --info: #8fb1ec;
   --info-soft: #17253f;

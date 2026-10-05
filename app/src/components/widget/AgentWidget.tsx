@@ -1,8 +1,12 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { SendHorizontal } from 'lucide-react';
-import { previewAgentReply } from '@/data/api';
+import { demoAgentReply, previewAgentReply, type DemoState } from '@/data/api';
 import { cn } from '@/lib/cn';
 import { Waveform } from '@/components/ui';
+
+/** The one honest line under every widget preview. Do not reword it in a page. */
+export const WIDGET_PREVIEW_NOTE =
+  'Predogled: besedilni pogovor z vzorčnimi odgovori. Glas se vklopi, ko bo agent povezan.';
 
 export interface AgentWidgetProps {
   agentName: string;
@@ -14,11 +18,21 @@ export interface AgentWidgetProps {
   /**
    * The customer's widget colour (agent.widget_accent_color). It is THEIR colour, painted
    * on THEIR website, so it is the one place a hex value from data reaches the screen.
-   * Without it the widget uses our accent.
+   * Without it the widget uses the default widget colour (the first of WIDGET_COLORS).
    */
   accentHex?: string;
+  /**
+   * Where the sample replies come from:
+   *  - 'account' (default): the logged-in account's own agent — api.previewAgentReply, which
+   *    answers from that account's sources (Pregled, wizard, Namestitev);
+   *  - 'demo': the fictional salon of the landing page — api.demoAgentReply (no login).
+   */
+  replySource?: 'account' | 'demo';
   /** called with every question the person sends (for the landing demo / wizard) */
   onAsk?: (question: string) => void;
+  /** the line under the widget; pass `false` only where the same sentence already stands next to it */
+  note?: ReactNode | false;
+  /** size of the whole preview (widget + the line under it): "h-[24rem] max-w-[17rem]" */
   className?: string;
 }
 
@@ -30,10 +44,14 @@ interface Turn {
 
 /**
  * Preview of the widget a visitor sees on the customer's website: used on Pregled,
- * in wizard step 5 and as the demo on the landing page.
+ * in wizard step 5, on Namestitev and as the demo on the landing page.
  *
- * Stage 1 has no voice and no real agent. Replies are canned sentences from
- * api.previewAgentReply, and the widget says so at the bottom.
+ * It is a picture of something that lives on ANOTHER website, so it does not follow our
+ * light/dark theme: the body is always light and the header carries the customer's colour
+ * (the `widget-*` tokens are the same in both themes).
+ *
+ * Stage 1 has no voice and no real agent: replies are sample sentences from the api, and
+ * the line under the widget says so.
  */
 export function AgentWidget({
   agentName,
@@ -41,13 +59,16 @@ export function AgentWidget({
   firstMessage,
   textInput = true,
   accentHex,
+  replySource = 'account',
   onAsk,
+  note,
   className,
 }: AgentWidgetProps) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState('');
   const [speaking, setSpeaking] = useState(false);
   const nextId = useRef(1);
+  const demoState = useRef<DemoState | undefined>(undefined);
   const listRef = useRef<HTMLDivElement>(null);
   const alive = useRef(true);
   const inputId = useId();
@@ -64,6 +85,15 @@ export function AgentWidget({
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns, speaking]);
 
+  async function ask(question: string): Promise<string> {
+    if (replySource === 'demo') {
+      const reply = await demoAgentReply(question, demoState.current);
+      demoState.current = reply.state;
+      return reply.text;
+    }
+    return (await previewAgentReply(question)).text;
+  }
+
   async function send(e: FormEvent) {
     e.preventDefault();
     const question = draft.trim();
@@ -73,9 +103,9 @@ export function AgentWidget({
     onAsk?.(question);
     setSpeaking(true);
     try {
-      const reply = await previewAgentReply(question);
+      const text = await ask(question);
       if (!alive.current) return;
-      setTurns((t) => [...t, { id: nextId.current++, role: 'agent', text: reply.text }]);
+      setTurns((t) => [...t, { id: nextId.current++, role: 'agent', text }]);
     } catch {
       if (!alive.current) return;
       setTurns((t) => [
@@ -87,80 +117,94 @@ export function AgentWidget({
     }
   }
 
+  // The customer's colour is data, not one of our tokens; without it the default widget colour.
   const brandStyle: CSSProperties | undefined = accentHex ? { background: accentHex } : undefined;
-  const onBrand = accentHex ? 'text-widget-fg' : 'bg-accent text-accent-fg';
+  const brand = cn('text-widget-fg', accentHex ? null : 'bg-widget-default');
 
   return (
-    <section
-      aria-label={`Predogled pomočnika ${agentName}`}
-      className={cn(
-        'flex h-[30rem] max-h-full w-full max-w-sm flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-md',
-        className,
-      )}
-    >
-      <header className={cn('flex shrink-0 items-center gap-3 px-4 py-3', onBrand)} style={brandStyle}>
-        <Waveform bars={5} size={18} animated={speaking} />
-        <div className="min-w-0">
-          <p className="truncate text-base font-semibold">{agentName}</p>
-          <p className="truncate text-xs opacity-90">AI pomočnik · {businessName}</p>
-        </div>
-      </header>
-
-      <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-4 py-4" aria-live="polite">
-        <Bubble role="agent">{firstMessage}</Bubble>
-        {turns.map((t) => (
-          <Bubble key={t.id} role={t.role}>
-            {t.text}
-          </Bubble>
-        ))}
-        {speaking ? (
-          <div className="flex items-center gap-2 text-sm text-fg-subtle">
-            <Waveform bars={5} size={14} animated className="text-fg-subtle" />
-            {agentName} odgovarja
+    <div className={cn('flex h-[31.5rem] max-h-full w-full max-w-sm flex-col gap-2', className)}>
+      <section
+        aria-label={`Predogled pomočnika ${agentName}`}
+        className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-lg border border-widget-border bg-widget-surface text-widget-text shadow-md"
+      >
+        <header className={cn('flex shrink-0 items-center gap-3 px-4 py-3', brand)} style={brandStyle}>
+          <Waveform bars={5} size={18} animated={speaking} />
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold">{agentName}</p>
+            <p className="truncate text-xs opacity-90">AI pomočnik · {businessName}</p>
           </div>
-        ) : null}
-      </div>
+        </header>
 
-      {textInput ? (
-        <form onSubmit={send} className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2.5">
-          <label className="sr-only" htmlFor={inputId}>
-            Vprašanje za pomočnika
-          </label>
-          <input
-            id={inputId}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Vpišite vprašanje"
-            autoComplete="off"
-            className="h-10 min-w-0 flex-1 rounded border border-border-strong bg-surface px-3 text-base text-fg placeholder:text-fg-subtle focus-visible:border-ring focus-visible:outline-offset-0"
-          />
-          <button
-            type="submit"
-            aria-label="Pošlji vprašanje"
-            disabled={!draft.trim() || speaking}
-            className={cn('inline-flex h-10 w-10 shrink-0 items-center justify-center rounded disabled:opacity-55', onBrand)}
-            style={brandStyle}
-          >
-            <SendHorizontal size={18} aria-hidden="true" />
-          </button>
-        </form>
-      ) : null}
-      <p className="shrink-0 border-t border-border bg-surface-2 px-4 py-1.5 text-xs text-fg-muted">
-        Predogled: odgovori so vzorčni, glas še ni povezan.
-      </p>
-    </section>
+        <div
+          ref={listRef}
+          className="relative flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-4 py-4"
+          aria-live="polite"
+        >
+          <Bubble role="agent">{firstMessage}</Bubble>
+          {turns.map((t) => (
+            <Bubble key={t.id} role={t.role} brand={brand} brandStyle={brandStyle}>
+              {t.text}
+            </Bubble>
+          ))}
+          {speaking ? (
+            <div className="flex items-center gap-2 text-sm text-widget-muted">
+              <Waveform bars={5} size={14} animated />
+              {agentName} odgovarja
+            </div>
+          ) : null}
+        </div>
+
+        {textInput ? (
+          <form onSubmit={send} className="flex shrink-0 items-center gap-2 border-t border-widget-border px-3 py-2.5">
+            <label className="sr-only" htmlFor={inputId}>
+              Vprašanje za pomočnika
+            </label>
+            <input
+              id={inputId}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Vpišite vprašanje"
+              autoComplete="off"
+              className="h-10 min-w-0 flex-1 rounded border border-widget-border-strong bg-widget-surface px-3 text-base text-widget-text placeholder:text-widget-muted focus-visible:outline-offset-0"
+            />
+            <button
+              type="submit"
+              aria-label="Pošlji vprašanje"
+              disabled={!draft.trim() || speaking}
+              className={cn('inline-flex h-10 w-10 shrink-0 items-center justify-center rounded disabled:opacity-55', brand)}
+              style={brandStyle}
+            >
+              <SendHorizontal size={18} aria-hidden="true" />
+            </button>
+          </form>
+        ) : null}
+      </section>
+      {note === false ? null : <p className="shrink-0 text-xs text-fg-muted">{note ?? WIDGET_PREVIEW_NOTE}</p>}
+    </div>
   );
 }
 
-function Bubble({ role, children }: { role: 'agent' | 'visitor'; children: string }) {
+function Bubble({
+  role,
+  children,
+  brand,
+  brandStyle,
+}: {
+  role: 'agent' | 'visitor';
+  children: string;
+  brand?: string;
+  brandStyle?: CSSProperties;
+}) {
+  const visitor = role === 'visitor';
   return (
     <p
       className={cn(
         'max-w-[85%] rounded-lg px-3 py-2 text-base',
-        role === 'agent' ? 'self-start bg-surface-2 text-fg' : 'self-end bg-accent-soft text-accent-soft-fg',
+        visitor ? cn('self-end', brand) : 'self-start bg-widget-surface-2 text-widget-text',
       )}
+      style={visitor ? brandStyle : undefined}
     >
-      <span className="sr-only">{role === 'agent' ? 'Pomočnik: ' : 'Vi: '}</span>
+      <span className="sr-only">{visitor ? 'Vi: ' : 'Pomočnik: '}</span>
       {children}
     </p>
   );

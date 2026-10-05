@@ -27,10 +27,12 @@ import type {
   Session,
   TranscriptTurn,
   User,
+  Voice,
   WorkingHours,
 } from './types';
 
-export const DB_VERSION = 1;
+// 2: agent.paused_by / pause_reasons, source.note, voices named by character.
+export const DB_VERSION = 2;
 
 /* ------------------------------------------------------------ date helpers */
 
@@ -132,20 +134,35 @@ export const TRIAL_DAYS = 14;
 /** Sample cost per conversation minute for the admin "ocenjen strošek" column. */
 export const SAMPLE_COST_PER_MINUTE_EUR = 0.09;
 
-/** Voices the customer can choose from (sample list; real ones come from ElevenLabs in stage 3). */
-export const SAMPLE_VOICES: { id: string; name: string; description: string }[] = [
-  { id: 'voice_sl_jan', name: 'Jan', description: 'moški glas, umirjen' },
-  { id: 'voice_sl_tina', name: 'Tina', description: 'ženski glas, topel' },
-  { id: 'voice_sl_ana', name: 'Ana', description: 'ženski glas, živahen' },
-  { id: 'voice_sl_peter', name: 'Peter', description: 'moški glas, globok' },
+/**
+ * Voices the customer can choose from (sample list; real ones come from ElevenLabs in stage 3).
+ * A voice is named by its character, not by a person: the AGENT has a name, the voice does not,
+ * so choosing a voice never looks like renaming the agent.
+ */
+export const SAMPLE_VOICES: Voice[] = [
+  { id: 'voice_sl_jan', name: 'Moški glas, umirjen', description: '', gender: 'm' },
+  { id: 'voice_sl_tina', name: 'Ženski glas, topel', description: '', gender: 'f' },
+  { id: 'voice_sl_ana', name: 'Ženski glas, živahen', description: '', gender: 'f' },
+  { id: 'voice_sl_peter', name: 'Moški glas, globok', description: '', gender: 'm' },
 ];
+
+/** "AI pomočnik" for a male voice, "AI pomočnica" for a female one. */
+export function assistantNoun(voiceId: string): string {
+  return SAMPLE_VOICES.find((v) => v.id === voiceId)?.gender === 'f' ? 'AI pomočnica' : 'AI pomočnik';
+}
+
+/** The greeting a new agent starts with; the one place this sentence is built. */
+export function defaultFirstMessage(agentName: string, businessName: string, voiceId: string): string {
+  const who = businessName.trim() ? ` podjetja ${businessName.trim()}` : '';
+  return `Pozdravljeni, sem ${agentName.trim()}, ${assistantNoun(voiceId)}${who}. Kako vam lahko pomagam?`;
+}
 
 /**
  * Widget colours the customer can pick. This is customer data (it is painted on THEIR
  * website), not a colour of our interface — the only hex values outside tokens.css.
  */
 export const WIDGET_COLORS: { key: string; name: string; hex: string }[] = [
-  { key: 'petrol', name: 'Petrolej modra', hex: '#0A6C8F' },
+  { key: 'petrol', name: 'Petrolejsko modra', hex: '#0A6C8F' },
   { key: 'ink', name: 'Temno siva', hex: '#1F2A30' },
   { key: 'forest', name: 'Gozdno zelena', hex: '#1F6B4A' },
   { key: 'brick', name: 'Opečno rdeča', hex: '#A8432F' },
@@ -179,17 +196,17 @@ Lep pozdrav,
 export const DEFAULT_OWNER_TEMPLATE = `Nov pogovor na vaši spletni strani.
 
 Obiskovalec: {{ime}}
-E-pošta: {{eposta}}
+E-naslov: {{eposta}}
 Telefon: {{telefon}}
 
 Povzetek: {{povzetek}}
 
 Dogovorjeno: {{dogovorjeno}}
 
-Celoten zapis pogovora: {{povezava}}`;
+Celoten prepis pogovora: {{povezava}}`;
 
 export function defaultInstructions(businessName: string): string {
-  return `Ste glasovni pomočnik podjetja ${businessName}.
+  return `Ste AI pomočnik podjetja ${businessName}.
 
 - Obiskovalce vikajte. Odgovarjajte v enem ali dveh kratkih stavkih in postavite eno vprašanje naenkrat.
 - Odgovarjajte samo iz virov znanja. Če podatka ni, to povejte in ponudite povratni klic.
@@ -257,7 +274,7 @@ function spletnostConversations(now: Date): ConvSeed[] {
       topic: 'Nova spletna stran za računovodski servis',
       summary:
         'Gospa Kovač vodi računovodski servis in želi novo spletno stran. Zanimala jo je cena in kaj je vključeno. Rezervirala je brezplačen posvet.',
-      agreed: 'Brezplačen posvet po telefonu ob 10.00, 30 minut. Termin je vpisan v koledar.',
+      agreed: 'Brezplačen posvet po telefonu ob 10:00, 30 minut. Termin je vpisan v koledar.',
       visitor: { name: 'Maja Kovač', email: 'maja.kovac@example.si', phone: '040 555 012' },
       lead: { wanted: 'Nova predstavitvena spletna stran za računovodski servis', status: 'new' },
       booking: { start: slot, lengthMin: 30, mode: 'auto', status: 'confirmed' },
@@ -292,7 +309,7 @@ function spletnostConversations(now: Date): ConvSeed[] {
     lines: [
       HELLO,
       'Zanima me, koliko stane vodenje Google oglasov.',
-      'Vodenje Google oglaševanja stane od sto devetdeset evrov na mesec. Proračun za oglase plačate posebej, neposredno Googlu.',
+      'Vodenje Google oglaševanja stane od sto devetdesetih evrov na mesec. Proračun za oglase plačate posebej, neposredno Googlu.',
       'Kolikšen proračun pa priporočate?',
       'Tega podatka nimam zapisanega, ker je odvisen od panoge in ciljev. Naš svetovalec vam ga lahko oceni na brezplačnem posvetu.',
       'Ali je pogodba vezana na določen čas?',
@@ -344,14 +361,14 @@ function spletnostConversations(now: Date): ConvSeed[] {
       topic: 'Facebook in Instagram oglaševanje za kozmetični salon',
       summary:
         'Gospa Horvat ima kozmetični salon in želi več strank prek Facebooka in Instagrama. Izvedela je ceno vodenja in rezervirala posvet.',
-      agreed: 'Brezplačen posvet po telefonu ob 14.00, 30 minut. Termin je vpisan v koledar.',
+      agreed: 'Brezplačen posvet po telefonu ob 14:00, 30 minut. Termin je vpisan v koledar.',
       visitor: { name: 'Nina Horvat', email: 'nina@example.si', phone: '040 555 034' },
       lead: { wanted: 'Oglaševanje na Facebooku in Instagramu za kozmetični salon', status: 'new' },
       booking: { start: slot, lengthMin: 30, mode: 'auto', status: 'confirmed' },
       lines: [
         HELLO,
         'Pozdravljeni. Imam kozmetični salon in bi rada več strank prek Facebooka in Instagrama.',
-        'Pri tem vam lahko pomagamo. Vodimo oglaševanje na Facebooku in Instagramu, cena vodenja je od sto devetdeset evrov na mesec.',
+        'Pri tem vam lahko pomagamo. Vodimo oglaševanje na Facebooku in Instagramu, cena vodenja je od sto devetdesetih evrov na mesec.',
         'Bi se lahko o tem s kom pogovorila?',
         `Seveda, posvet je brezplačen in traja trideset minut. Prosta termina sta ${day} ob enajstih in ${day} ob štirinajstih. Kateri vam bolj ustreza?`,
         'Ob štirinajstih.',
@@ -379,7 +396,7 @@ function spletnostConversations(now: Date): ConvSeed[] {
     lines: [
       HELLO,
       'Ali delate tudi oglase za YouTube?',
-      'Da, vodimo tudi YouTube oglaševanje. Cena vodenja je od dvesto štirideset evrov na mesec.',
+      'Da, vodimo tudi YouTube oglaševanje. Cena vodenja je od dvesto štiridesetih evrov na mesec.',
       'Ali posnamete tudi video?',
       'O snemanju videov nimam podatka, zato vam tega ne morem potrditi. Želite, da vas o tem pokliče naš svetovalec?',
       'Ne, bom kar sam pisal na e-pošto.',
@@ -431,7 +448,7 @@ function spletnostConversations(now: Date): ConvSeed[] {
       topic: 'Marketing plan za novo cvetličarno',
       summary:
         'Gospa Mlakar odpira cvetličarno in potrebuje marketing plan. Ponujeni termini ji niso ustrezali, zato je pustila željo za termin po 17. uri. Termin še čaka na potrditev.',
-      agreed: 'Želen termin ob 17.30. Agencija ga mora še potrditi.',
+      agreed: 'Želeni termin ob 17:30. Agencija ga mora še potrditi.',
       visitor: { name: 'Petra Mlakar', email: 'petra.mlakar@example.com', phone: '040 555 056' },
       lead: { wanted: 'Marketing plan za novo cvetličarno, pogovor v živo', status: 'new' },
       booking: { start: wish, lengthMin: 30, mode: 'request', status: 'requested' },
@@ -487,11 +504,11 @@ function spletnostConversations(now: Date): ConvSeed[] {
     visitor: { name: 'Luka Kranjc', email: 'luka.kranjc@example.si', phone: '040 555 067' },
     lead: { wanted: 'Predlog Google oglaševanja za ključavničarstvo', status: 'contacted' },
     visitorEmailFails:
-      'Prejemnikov poštni strežnik je sporočilo zavrnil: poštni predal ne obstaja (550). Preverite e-naslov in obiskovalca pokličite.',
+      'Poštni predal na tem naslovu ne obstaja (napaka 550). Preverite e-naslov in obiskovalca pokličite.',
     lines: [
       HELLO,
       'Dober dan. Imam ključavničarstvo v Kranju in bi rad, da me ljudje najdejo na Googlu.',
-      'Pri tem pomaga Google oglaševanje, ki ga vodimo za stranke. Cena vodenja je od sto devetdeset evrov na mesec, proračun za oglase pa plačate Googlu.',
+      'Pri tem pomaga Google oglaševanje, ki ga vodimo za stranke. Cena vodenja je od sto devetdesetih evrov na mesec, proračun za oglase pa plačate Googlu.',
       'Ali delate samo za večja podjetja?',
       'Ne, delamo tudi z malimi podjetji in samostojnimi podjetniki. Želite, da vam pripravimo predlog?',
       'Lahko, pošljite mi ga.',
@@ -518,7 +535,7 @@ function spletnostConversations(now: Date): ConvSeed[] {
       topic: 'Spletna stran za turistično kmetijo',
       summary:
         'Gospa Potočnik želi spletno stran za turistično kmetijo z obrazcem za povpraševanje po nočitvah. Zanimalo jo je, ali lahko stran ureja sama. Rezervirala je posvet.',
-      agreed: 'Brezplačen posvet po telefonu ob 11.00, 30 minut. Termin je vpisan v koledar.',
+      agreed: 'Brezplačen posvet po telefonu ob 11:00, 30 minut. Termin je vpisan v koledar.',
       visitor: { name: 'Simona Potočnik', email: 'simona@example.si', phone: '040 555 078' },
       lead: { wanted: 'Spletna stran za turistično kmetijo s povpraševanjem', status: 'won' },
       booking: { start: slot, lengthMin: 30, mode: 'auto', status: 'confirmed' },
@@ -553,7 +570,7 @@ function spletnostConversations(now: Date): ConvSeed[] {
       topic: 'Google oglaševanje za avtoservis',
       summary:
         'Gospod Oblak ima avtoservis in ga zanima oglaševanje na Googlu. Rezerviral je posvet, ki ga je pozneje odpovedal.',
-      agreed: 'Brezplačen posvet po telefonu ob 12.00. Termin je bil pozneje odpovedan.',
+      agreed: 'Brezplačen posvet po telefonu ob 12:00. Termin je bil pozneje odpovedan.',
       visitor: { name: 'Gregor Oblak', email: 'gregor.oblak@example.com', phone: '040 555 089' },
       lead: { wanted: 'Google oglaševanje za avtoservis', status: 'lost' },
       booking: { start: slot, lengthMin: 30, mode: 'auto', status: 'cancelled' },
@@ -607,7 +624,7 @@ function spletnostConversations(now: Date): ConvSeed[] {
         'Ali pri vas dobim tudi gostovanje za spletno stran?',
         'O gostovanju nimam zapisanega podatka. Želite, da vas o tem pokliče naš svetovalec?',
         'Kaj pa vzdrževanje?',
-        'Vzdrževanje spletne strani ponujamo od devetindvajset evrov na mesec.',
+        'Vzdrževanje spletne strani ponujamo od devetindvajsetih evrov na mesec.',
         'V redu, hvala.',
         'Prosim. Lep dan želim!',
       ],
@@ -770,7 +787,66 @@ export function buildWebsitePages(
     chars,
     last_synced_at: included ? syncedAt : null,
     error: null,
+    note: null,
   }));
+}
+
+/**
+ * What an import shows for any OTHER address than the sample agency's: a neutral list of
+ * pages an ordinary business website has. Stage 1 cannot read a real website, and showing a
+ * hairdresser the agency's pages as her own would be wrong. The two legal pages come
+ * pre-excluded, with the reason in `note`.
+ */
+const GENERIC_PAGES: [path: string, title: string, chars: number, note: string | null][] = [
+  ['/', 'Domov', 3200, null],
+  ['/storitve/', 'Storitve', 5400, null],
+  ['/cenik/', 'Cenik', 2100, null],
+  ['/o-nas/', 'O nas', 2600, null],
+  ['/kontakt/', 'Kontakt', 800, null],
+  ['/blog/kako-se-pripraviti-na-prvi-obisk/', 'Blog: Kako se pripraviti na prvi obisk', 4300, null],
+  ['/blog/pogosta-vprasanja-strank/', 'Blog: Pogosta vprašanja strank', 3900, null],
+  [
+    '/politika-zasebnosti/',
+    'Politika zasebnosti',
+    9800,
+    'Pravna stran. Predlagamo, da ostane izključena: agent iz nje ne odgovarja na vprašanja strank.',
+  ],
+  [
+    '/piskotki/',
+    'Piškotki',
+    3600,
+    'Pravna stran. Predlagamo, da ostane izključena: agent iz nje ne odgovarja na vprašanja strank.',
+  ],
+];
+
+export function buildGenericWebsitePages(
+  accountId: Id,
+  agentId: Id,
+  baseUrl: string,
+  syncedAt: string | null,
+  idPrefix: string,
+): KnowledgeSource[] {
+  const base = baseUrl.replace(/\/+$/, '');
+  return GENERIC_PAGES.map(([path, title, chars, note], i) => {
+    const included = note === null;
+    return {
+      id: `${idPrefix}_page_${String(i + 1).padStart(2, '0')}`,
+      account_id: accountId,
+      agent_id: agentId,
+      type: 'website_page' as const,
+      title,
+      url: `${base}${path}`,
+      content: null,
+      file_url: null,
+      included,
+      status: included ? ('synced' as const) : ('excluded' as const),
+      elevenlabs_doc_id: included ? `doc_${idPrefix}_${i + 1}` : null,
+      chars,
+      last_synced_at: included ? syncedAt : null,
+      error: null,
+      note,
+    };
+  });
 }
 
 const PRICE_LIST_TEXT = `Vzorčni cenik za predogled (cene niso prave).
@@ -848,6 +924,8 @@ function buildSpletnost(now: Date) {
     first_message: HELLO,
     instructions: defaultInstructions('Spletnost'),
     status: 'active',
+    paused_by: null,
+    pause_reasons: [],
     allowed_domain: 'spletnost.si',
     widget_accent_color: '#0A6C8F',
     widget_text_input: true,
@@ -912,6 +990,7 @@ function buildSpletnost(now: Date) {
       chars: PRICE_LIST_TEXT.length,
       last_synced_at: daysAgo(9, 15, 10, now),
       error: null,
+      note: null,
     },
     {
       id: 'spl_file_01',
@@ -928,6 +1007,7 @@ function buildSpletnost(now: Date) {
       chars: 14860,
       last_synced_at: daysAgo(21, 10, 40, now),
       error: null,
+      note: null,
     },
   ];
 
@@ -1106,6 +1186,7 @@ function simplePages(
     chars,
     last_synced_at: syncedAt,
     error: null,
+    note: null,
   }));
 }
 
@@ -1152,6 +1233,8 @@ function buildOtherAccounts(now: Date) {
         'Pozdravljeni, sem Tina, AI pomočnica Frizerskega salona Lana. Kako vam lahko pomagam?',
       instructions: defaultInstructions('Frizerski salon Lana'),
       status: 'active',
+      paused_by: null,
+      pause_reasons: [],
       allowed_domain: 'salon-lana.example.si',
       widget_accent_color: '#A8432F',
       widget_text_input: true,
@@ -1211,7 +1294,7 @@ function buildOtherAccounts(now: Date) {
         [
           'Pozdravljeni, sem Tina, AI pomočnica Frizerskega salona Lana. Kako vam lahko pomagam?',
           'Koliko stane barvanje dolgih las?',
-          'Barvanje dolgih las stane od petinpetdeset evrov. Končna cena je odvisna od dolžine in količine barve.',
+          'Barvanje dolgih las stane od petinpetdesetih evrov. Končna cena je odvisna od dolžine in količine barve.',
           'Ali delate tudi ob sobotah?',
           'Da, ob sobotah smo odprti od osmih do trinajstih. Želite, da zapišem vašo željo za termin?',
           'Ne, hvala, bom poklicala.',
@@ -1279,6 +1362,8 @@ function buildOtherAccounts(now: Date) {
         'Pozdravljeni, sem Ana, AI pomočnica Zobne ordinacije Vidmar. Kako vam lahko pomagam?',
       instructions: defaultInstructions('Zobna ordinacija Vidmar'),
       status: 'paused',
+      paused_by: 'payment',
+      pause_reasons: ['payment'],
       allowed_domain: 'zobna-vidmar.example.si',
       widget_accent_color: '#243B7A',
       widget_text_input: true,
@@ -1340,6 +1425,7 @@ function buildOtherAccounts(now: Date) {
         chars: 0,
         last_synced_at: null,
         error: 'Datoteke ni bilo mogoče prebrati: dokument je zaščiten z geslom.',
+        note: null,
       },
     ] satisfies KnowledgeSource[],
     conversations: [
@@ -1407,6 +1493,31 @@ function buildOtherAccounts(now: Date) {
   return { lana, vidmar };
 }
 
+/* ------------------------------------------------- landing-page demo salon */
+
+/**
+ * Content of the landing-page demo (api.demoAgentReply): what the assistant of the fictional
+ * "Frizerski salon Lana" knows. Everything is invented sample content for a business that
+ * does not exist — the prices are not a price list and the address is not a real place.
+ */
+export const DEMO_SALON = {
+  name: 'Frizerski salon Lana',
+  shortName: 'Lana',
+  hours:
+    'Odprti smo od ponedeljka do petka od 8:00 do 16:00 in ob sobotah od 8:00 do 13:00. Ob nedeljah je salon zaprt.',
+  address: 'Najdete nas na Vzorčni ulici 1 v Ljubljani. Parkirate lahko pred salonom.',
+  priceSummary: 'Žensko striženje stane 25 €, moško 15 €, barvanje las pa od 55 €.',
+  prices: [
+    { match: /(otro|otrok)/, sentence: 'Otroško striženje stane 12 €.' },
+    { match: /(mošk|mosk|brad)/, sentence: 'Moško striženje stane 15 €.' },
+    { match: /(barv|preliv|pramen)/, sentence: 'Barvanje las stane od 55 €, odvisno od dolžine las.' },
+    { match: /(fen|frizur|speti)/, sentence: 'Fen frizura stane 18 €.' },
+    { match: /(strič|striz|žensk|zensk)/, sentence: 'Žensko striženje stane 25 €, moško 15 €.' },
+  ],
+  /** the two times the assistant offers, ready to be put into a sentence */
+  slots: ['jutri ob 9:00', 'v soboto ob 11:00'],
+} as const;
+
 /* ----------------------------------------------------------------- session */
 
 export const LOGGED_OUT_SESSION: Session = {
@@ -1450,7 +1561,7 @@ export function createSampleDb(now: Date = new Date()): Db {
 
 /** A new, empty trial account — what `register()` creates. */
 export function createEmptyAccountBundle(
-  input: { businessName: string; userName: string; email: string },
+  input: { businessName: string; userName: string; email: string; websiteUrl: string; allowedDomain: string },
   now: Date = new Date(),
 ) {
   const stamp = now.getTime().toString(36);
@@ -1461,7 +1572,7 @@ export function createEmptyAccountBundle(
   const account: Account = {
     id: accountId,
     name: input.businessName,
-    website_url: '',
+    website_url: input.websiteUrl,
     status: 'trial',
     plan_key: null,
     trial_ends_at: daysAhead(TRIAL_DAYS, 23, 59, now),
@@ -1494,10 +1605,12 @@ export function createEmptyAccountBundle(
     elevenlabs_agent_id: null,
     voice_id: 'voice_sl_jan',
     language: 'sl',
-    first_message: `Pozdravljeni, sem Jan, AI pomočnik podjetja ${input.businessName}. Kako vam lahko pomagam?`,
+    first_message: defaultFirstMessage('Jan', input.businessName, 'voice_sl_jan'),
     instructions: defaultInstructions(input.businessName),
     status: 'draft',
-    allowed_domain: '',
+    paused_by: null,
+    pause_reasons: [],
+    allowed_domain: input.allowedDomain,
     widget_accent_color: '#0A6C8F',
     widget_text_input: true,
     widget_position: 'bottom-right',

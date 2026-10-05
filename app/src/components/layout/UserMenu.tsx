@@ -75,7 +75,7 @@ export function UserMenu({ area }: { area: 'app' | 'admin' }) {
         open={confirmReset}
         onOpenChange={setConfirmReset}
         title="Ponastavim vzorčne podatke?"
-        description="Vse spremembe, ki ste jih naredili v tem predogledu, bodo izbrisane. Prikazali se bodo začetni vzorčni podatki."
+        description="Vse spremembe, ki ste jih naredili v tem predogledu, bodo izgubljene in prikazali se bodo začetni vzorčni podatki. Prijavljeni ostanete. Tega ni mogoče razveljaviti."
         confirmLabel="Ponastavi podatke"
         onConfirm={async () => {
           const result = await resetSampleData();

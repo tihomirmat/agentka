@@ -71,7 +71,8 @@ export function PublicShell() {
               {appLink.label}
             </Link>
             {session.loggedIn ? null : (
-              <ButtonLink to="/registracija" variant="primary" size="sm" className="sm:h-10 sm:px-4 sm:text-base">
+              // Secondary on purpose: the page under the header owns the one primary button of the view.
+              <ButtonLink to="/registracija" variant="secondary" size="sm" className="sm:h-10 sm:px-4 sm:text-base">
                 Začnite brezplačno
               </ButtonLink>
             )}

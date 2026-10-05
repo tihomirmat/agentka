@@ -65,6 +65,10 @@ function NavList({ items }: { items: NavItem[] }) {
  * Internal: the frame shared by AppShell and AdminShell.
  * Sidebar on the left (a slide-in drawer under 900px), top bar, scrolling page area.
  * Sized with height:100% from the root — no viewport units.
+ *
+ * The frame never scrolls as a whole: the root is `relative overflow-hidden` and <main> is
+ * the one scrolling box AND the positioning context of everything in the page (see "THE
+ * FRAME RULE" in styles/index.css). scripts/sweep.mjs checks it on every route.
  */
 export function SidebarShell({
   navLabel,
@@ -108,7 +112,7 @@ export function SidebarShell({
           </RadixDialog.Close>
         ) : null}
       </div>
-      <nav aria-label={navLabel} className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+      <nav aria-label={navLabel} className="relative min-h-0 flex-1 overflow-y-auto px-2 py-2">
         <NavList items={nav} />
         {navSecondary && navSecondary.length > 0 ? (
           <div className="mt-3 border-t border-border pt-3">
@@ -116,13 +120,17 @@ export function SidebarShell({
           </div>
         ) : null}
       </nav>
-      <div className="shrink-0 border-t border-border p-2">{sidebarFooter}</div>
+      <div className="shrink-0 border-t border-border p-2">
+        {/* On a phone the top bar has no room for the note, so the drawer carries it. */}
+        {inDrawer ? <SampleDataNote className="mb-2 ml-2" /> : null}
+        {sidebarFooter}
+      </div>
     </div>
   );
 
   return (
     <TopBarSlotContext.Provider value={slot}>
-      <div className="flex h-full min-h-0 w-full">
+      <div className="relative flex h-full min-h-0 w-full overflow-hidden">
         {wide ? (
           <aside className="h-full w-sidebar shrink-0 border-r border-border">{sidebar(false)}</aside>
         ) : (
@@ -155,12 +163,13 @@ export function SidebarShell({
                 </button>
               )}
               <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">{topBar}</div>
-              <SampleDataNote responsive />
+              {/* Below the drawer breakpoint the note lives in the drawer, so the name is not cut. */}
+              {wide ? <SampleDataNote /> : null}
               <div ref={setSlot} className="flex shrink-0 items-center gap-2 empty:hidden" />
             </div>
           </header>
           {notice}
-          <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto" tabIndex={-1}>
+          <main ref={mainRef} data-scroll-root className="relative min-h-0 flex-1 overflow-y-auto" tabIndex={-1}>
             <div className="page py-6 sm:py-8">
               <Outlet />
             </div>

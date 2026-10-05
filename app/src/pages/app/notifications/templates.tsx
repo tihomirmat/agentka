@@ -1,35 +1,13 @@
 import type { ReactNode } from 'react';
+import { DEFAULT_EMAIL_TEMPLATES } from '@/data/api';
 import type { Conversation } from '@/data/types';
 
 /*
- * Default texts of the two e-mails. The api has no "get the default text" function and screens
- * may not read sample.ts, so the two texts are written out here, identical to the ones every
- * account starts with (src/data/sample.ts). Keep them in sync if those change.
+ * Default texts of the two e-mails: the one copy lives in the data layer
+ * (api.DEFAULT_EMAIL_TEMPLATES); these two names are kept for the existing imports.
  */
-export const DEFAULT_VISITOR_TEMPLATE = `Pozdravljeni, {{ime}},
-
-hvala za pogovor z našim pomočnikom. Tukaj je povzetek:
-
-{{povzetek}}
-
-Dogovorjeno: {{dogovorjeno}}
-
-Če želite kaj dodati ali spremeniti, odgovorite na to sporočilo.
-
-Lep pozdrav,
-{{podjetje}}`;
-
-export const DEFAULT_OWNER_TEMPLATE = `Nov pogovor na vaši spletni strani.
-
-Obiskovalec: {{ime}}
-E-pošta: {{eposta}}
-Telefon: {{telefon}}
-
-Povzetek: {{povzetek}}
-
-Dogovorjeno: {{dogovorjeno}}
-
-Celoten zapis pogovora: {{povezava}}`;
+export const DEFAULT_VISITOR_TEMPLATE = DEFAULT_EMAIL_TEMPLATES.visitor;
+export const DEFAULT_OWNER_TEMPLATE = DEFAULT_EMAIL_TEMPLATES.owner;
 
 export interface TemplateVariable {
   /** name between the double braces */

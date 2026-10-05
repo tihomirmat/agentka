@@ -1,7 +1,8 @@
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type MouseEvent, type ReactNode } from 'react';
 import { Link, type LinkProps } from 'react-router-dom';
 import { LoaderCircle, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { Tooltip } from './Tooltip';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md';
@@ -14,7 +15,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-accent text-accent-fg hover:bg-accent-hover',
   secondary: 'border border-border-strong bg-surface text-fg hover:bg-surface-2',
   ghost: 'text-fg-muted hover:bg-surface-2 hover:text-fg',
-  danger: 'bg-danger text-danger-fg hover:bg-danger-hover',
+  danger: 'bg-danger-solid text-danger-fg hover:bg-danger-solid-hover',
 };
 
 const SIZES: Record<ButtonSize, string> = {
@@ -40,6 +41,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: LucideIcon;
   /** stretch to the width of the container */
   block?: boolean;
+  /**
+   * THE pattern for a button that cannot be used right now: pass the reason as one sentence
+   * ("Najprej uvozite vsaj eno stran."). The button looks disabled but stays reachable by
+   * keyboard and finger; the reason shows as a tooltip on hover and focus and — because a
+   * phone has no hover — also when the button is tapped. Never grey a button out without a word.
+   */
+  disabledReason?: string | null | false;
   children: ReactNode;
 }
 
@@ -50,23 +58,44 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     loading = false,
     icon: Icon,
     block = false,
+    disabledReason,
     className,
     children,
     disabled,
     type = 'button',
+    onClick,
     ...rest
   },
   ref,
 ) {
   const iconSize = size === 'sm' ? 14 : 16;
-  return (
+  const blocked = Boolean(disabledReason) && !loading;
+  const [shown, setShown] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  function handleClick(e: MouseEvent<HTMLButtonElement>) {
+    if (blocked) {
+      e.preventDefault();
+      setShown(true);
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => setShown(false), 4000);
+      return;
+    }
+    onClick?.(e);
+  }
+
+  const button = (
     <button
       ref={ref}
-      type={type}
-      disabled={disabled || loading}
+      // A blocked button must not submit a form either.
+      type={blocked ? 'button' : type}
+      disabled={blocked ? undefined : disabled || loading}
+      aria-disabled={blocked || undefined}
       aria-busy={loading || undefined}
       className={cn(BASE, VARIANTS[variant], SIZES[size], block && 'w-full', className)}
       {...rest}
+      onClick={handleClick}
     >
       {loading ? (
         <LoaderCircle size={iconSize} className="motion-safe:animate-spin" aria-hidden="true" />
@@ -75,6 +104,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ) : null}
       {children}
     </button>
+  );
+
+  if (!blocked) return button;
+  return (
+    <Tooltip content={disabledReason} open={shown ? true : undefined}>
+      {button}
+    </Tooltip>
   );
 });
 

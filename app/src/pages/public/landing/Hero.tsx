@@ -30,7 +30,12 @@ export function Hero() {
         </div>
 
         <div className="min-w-0 lg:justify-self-end">
-          <AgentWidget agentName={EXAMPLE_AGENT} businessName={EXAMPLE_BUSINESS} firstMessage={EXAMPLE_GREETING} />
+          <AgentWidget
+            agentName={EXAMPLE_AGENT}
+            businessName={EXAMPLE_BUSINESS}
+            firstMessage={EXAMPLE_GREETING}
+            replySource="demo"
+          />
           <p className="mt-3 max-w-sm text-sm text-fg-muted">
             Preizkusite sami: to je pomočnik izmišljenega salona. Vprašajte na primer »Koliko stane?« ali »Želim
             rezervirati termin.«

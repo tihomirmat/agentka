@@ -4,7 +4,7 @@ import { BRAND } from '@/brand';
 import { HOW_IT_WORKS_ID } from '@/components/layout';
 import { Card, CardBody, CodeBlock, StatusPill, Switch } from '@/components/ui';
 import { TranscriptBubble } from '@/components/widget';
-import { formatDuration, formatNumber } from '@/data/format';
+import { formatNumber, formatTimecode } from '@/data/format';
 import { SOURCE_STATUS } from '@/data/labels';
 import { cn } from '@/lib/cn';
 import { Section, SectionHead } from './Section';
@@ -166,7 +166,7 @@ function ConversationExample() {
             key={turn.timeSec}
             role={turn.role}
             speaker={turn.role === 'agent' ? EXAMPLE_AGENT : 'Obiskovalec'}
-            time={formatDuration(turn.timeSec)}
+            time={formatTimecode(turn.timeSec)}
           >
             {turn.text}
           </TranscriptBubble>

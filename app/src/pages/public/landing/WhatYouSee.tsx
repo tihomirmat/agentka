@@ -1,6 +1,6 @@
 import { Card, CardBody, CardFooter, CardHeader, SampleDataNote, StatusPill } from '@/components/ui';
 import { formatDuration } from '@/data/format';
-import { BOOKING_STATUS, CONVERSATION_OUTCOME, EMAIL_KIND, EMAIL_STATUS } from '@/data/labels';
+import { BOOKING_STATUS, CONVERSATION_OUTCOME, EMAIL_KIND_PUBLIC, EMAIL_STATUS } from '@/data/labels';
 import { Section, SectionHead } from './Section';
 import { EXAMPLE_CONVERSATION as c } from './example';
 
@@ -80,7 +80,7 @@ export function WhatYouSee() {
                   ] as const
                 ).map(([kind, status]) => (
                   <li key={kind} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                    <span className="text-fg-muted">{EMAIL_KIND[kind]}</span>
+                    <span className="text-fg-muted">{EMAIL_KIND_PUBLIC[kind]}</span>
                     <StatusPill tone={EMAIL_STATUS[status].tone}>{EMAIL_STATUS[status].label}</StatusPill>
                   </li>
                 ))}

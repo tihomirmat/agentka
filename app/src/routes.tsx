@@ -1,5 +1,6 @@
 import { createHashRouter, Navigate } from 'react-router-dom';
 import { RequireAdmin, RequireAuth } from '@/components/auth/RequireAuth';
+import { clearToastsOnNavigation } from '@/components/ui/Toast';
 import { AdminShell, AppShell, PublicShell, WizardShell } from '@/components/layout';
 
 import Landing from '@/pages/public/Landing';
@@ -84,3 +85,12 @@ export const router = createHashRouter([
   // Review page for the design system. No login, no shell.
   { path: '/_ui', element: <Gallery /> },
 ]);
+
+// A toast belongs to the page it was raised on: when the page changes, older toasts go.
+let lastPath = router.state.location.pathname;
+router.subscribe((state) => {
+  const path = state.location.pathname;
+  if (path === lastPath) return;
+  lastPath = path;
+  clearToastsOnNavigation();
+});

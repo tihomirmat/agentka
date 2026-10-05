@@ -1,6 +1,16 @@
 /**
  * Slovenian formatting helpers. Everything a screen prints (dates, times, durations,
  * money, counts) goes through here so the whole product reads the same.
+ *
+ * THE DATE RULE (one for the whole product — do not write a second helper in a page):
+ *   - a moment in a list or a card  → formatRelativeDateTime: "danes ob 14:30",
+ *     "včeraj ob 09:05", "jutri ob 10:00", otherwise weekday + date: "sob., 3. okt. ob 13:22"
+ *     (the year is added only when it is not the current one);
+ *   - a day as a heading            → formatWeekdayDate: "sobota, 3. oktober";
+ *   - a date in a document or table → formatDate: "3. okt. 2026";
+ *   - the time is always 24-hour with two digits: "08:05", "14:30";
+ *   - a length of time              → formatDuration: "8 min 18 s" (never "08:18", which reads
+ *     as a time of day); a position inside a recording → formatTimecode: "01:24".
  */
 import type { IsoDate } from './types';
 
@@ -23,9 +33,16 @@ const fmtDateLong = new Intl.DateTimeFormat(LOCALE, {
   month: 'long',
   year: 'numeric',
 });
-const fmtDayMonth = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' });
-const fmtTime = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' });
-const fmtWeekday = new Intl.DateTimeFormat(LOCALE, { weekday: 'long' });
+const fmtWeekdayShortDate = new Intl.DateTimeFormat(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' });
+const fmtWeekdayShortDateYear = new Intl.DateTimeFormat(LOCALE, {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+const fmtWeekdayLongDate = new Intl.DateTimeFormat(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
+// hourCycle is fixed, so the clock is 24-hour whatever the device prefers.
+const fmtTime = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const fmtEur0 = new Intl.NumberFormat(LOCALE, {
   style: 'currency',
   currency: 'EUR',
@@ -72,26 +89,41 @@ export function dayDiff(value: DateInput, now: Date = new Date()): number {
   return Math.round((a - b) / 86_400_000);
 }
 
-/** "danes" · "včeraj" · "jutri" · "v torek" · "3. okt." (older or later than a week: short date) */
+/**
+ * "danes" · "včeraj" · "jutri" · otherwise weekday + date: "sob., 3. okt."
+ * (with the year when it is not the current one: "sob., 3. okt. 2025").
+ */
 export function formatRelativeDay(value: DateInput, now: Date = new Date()): string {
   const d = toDate(value);
   if (!isValid(d)) return '—';
   const diff = dayDiff(d, now);
   if (diff === 0) return 'danes';
   if (diff === -1) return 'včeraj';
-  if (diff === -2) return 'predvčerajšnjim';
   if (diff === 1) return 'jutri';
-  if (diff === 2) return 'pojutrišnjem';
-  if (diff > 2 && diff < 7) return fmtWeekday.format(d);
-  if (d.getFullYear() === now.getFullYear()) return fmtDayMonth.format(d);
-  return fmtDate.format(d);
+  return d.getFullYear() === now.getFullYear() ? fmtWeekdayShortDate.format(d) : fmtWeekdayShortDateYear.format(d);
 }
 
-/** "danes ob 14:30" · "včeraj ob 09:05" · "3. okt. ob 11:00" */
+/** "danes ob 14:30" · "včeraj ob 09:05" · "sob., 3. okt. ob 11:00" */
 export function formatRelativeDateTime(value: DateInput, now: Date = new Date()): string {
   const d = toDate(value);
   if (!isValid(d)) return '—';
   return `${formatRelativeDay(d, now)} ob ${fmtTime.format(d)}`;
+}
+
+/** "sobota, 3. oktober" (the year is added only when it is not the current one). For day headings. */
+export function formatWeekdayDate(value: DateInput, now: Date = new Date()): string {
+  const d = toDate(value);
+  if (!isValid(d)) return '—';
+  const base = fmtWeekdayLongDate.format(d);
+  return d.getFullYear() === now.getFullYear() ? base : `${base} ${d.getFullYear()}`;
+}
+
+/** "danes" or "jutri" for the next two days, otherwise null. A small hint next to a full date. */
+export function nearDayHint(value: DateInput, now: Date = new Date()): string | null {
+  const d = toDate(value);
+  if (!isValid(d)) return null;
+  const diff = dayDiff(d, now);
+  return diff === 0 || diff === 1 ? formatRelativeDay(d, now) : null;
 }
 
 /** "3. okt. 2026, 14:30–15:00" */
@@ -102,8 +134,46 @@ export function formatTimeRange(start: DateInput, end: DateInput): string {
   return `${fmtDate.format(s)}, ${fmtTime.format(s)}–${fmtTime.format(e)}`;
 }
 
-/** Seconds → "mm:ss" (e.g. 185 → "03:05"). Used for conversation length and transcript marks. */
+/** "14:30–15:00" */
+export function formatClockRange(start: DateInput, end: DateInput): string {
+  const s = toDate(start);
+  const e = toDate(end);
+  if (!isValid(s) || !isValid(e)) return '—';
+  return `${fmtTime.format(s)}–${fmtTime.format(e)}`;
+}
+
+/** Whole minutes between two moments (never negative). */
+export function minutesBetween(start: DateInput, end: DateInput): number {
+  return Math.max(0, Math.round((toDate(end).getTime() - toDate(start).getTime()) / 60_000));
+}
+
+/** "09:00" → 540. For comparing and stepping the "HH:MM" strings of working hours. */
+export function clockToMinutes(clock: string): number {
+  const [h, m] = clock.split(':');
+  return Number(h) * 60 + Number(m ?? 0);
+}
+
+/** 540 → "09:00" (always two digits, 24-hour). */
+export function minutesToClock(minutes: number): string {
+  const total = Math.max(0, Math.min(24 * 60, Math.round(minutes)));
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/**
+ * A length of time in words: 498 → "8 min 18 s", 45 → "45 s", 480 → "8 min".
+ * Never "08:18" — next to a date that reads as a time of day.
+ */
 export function formatDuration(totalSec: number): string {
+  const s = Math.max(0, Math.round(totalSec));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  if (mm === 0) return `${ss} s`;
+  if (ss === 0) return `${fmtNumber.format(mm)} min`;
+  return `${fmtNumber.format(mm)} min ${ss} s`;
+}
+
+/** A position inside a conversation: 84 → "01:24". Only for the time marks of transcript turns. */
+export function formatTimecode(totalSec: number): string {
   const s = Math.max(0, Math.round(totalSec));
   const mm = Math.floor(s / 60);
   const ss = s % 60;
@@ -157,6 +227,21 @@ export function plural(n: number, forms: [string, string, string, string]): stri
   else if (abs === 3 || abs === 4) word = forms[2];
   else word = forms[3];
   return `${fmtNumber.format(n)} ${word}`;
+}
+
+/** Word forms for plural(): [1, 2, 3–4, 5+ and 0]. One set per noun, used everywhere. */
+export const DAY_FORMS: [string, string, string, string] = ['dan', 'dneva', 'dnevi', 'dni'];
+export const MINUTE_FORMS: [string, string, string, string] = ['minuta', 'minuti', 'minute', 'minut'];
+
+/** 3 → "še 3 dnevi" · 1 → "še 1 dan" · 0 → "še danes". Days left of a trial or a period. */
+export function formatDaysLeft(days: number): string {
+  const n = Math.max(0, Math.round(days));
+  return n === 0 ? 'še danes' : `še ${plural(n, DAY_FORMS)}`;
+}
+
+/** { days: 14, minutes: 30 } → "14 dni in 30 minut pogovorov". The terms of the free trial. */
+export function formatTrialTerms(terms: { days: number; minutes: number }): string {
+  return `${plural(terms.days, DAY_FORMS)} in ${plural(terms.minutes, MINUTE_FORMS)} pogovorov`;
 }
 
 /** "https://spletnost.si/kontakt/" → "spletnost.si/kontakt/" */

@@ -4,7 +4,7 @@ import { SidebarShell, type NavItem } from './SidebarShell';
 import { UserMenu } from './UserMenu';
 
 export const ADMIN_NAV: NavItem[] = [
-  { to: '/admin', label: 'Računi', icon: Building2, end: true, alsoActive: ['/admin/racuni'] },
+  { to: '/admin', label: 'Uporabniški računi', icon: Building2, end: true, alsoActive: ['/admin/racuni'] },
   { to: '/admin/paketi', label: 'Paketi', icon: Package },
 ];
 
@@ -12,8 +12,8 @@ const ADMIN_NAV_SECONDARY: NavItem[] = [{ to: '/app/pregled', label: 'Nazaj v ap
 
 /**
  * Platform admin frame. Same structure as the customer app, but it says
- * "Skrbnik platforme" in two places and carries an inverse strip, so it is never
- * mistaken for a customer's own view.
+ * "Skrbnik platforme" in two places and carries a warning-toned strip (readable in both
+ * themes), so it is never mistaken for a customer's own view.
  */
 export function AdminShell() {
   return (
@@ -25,8 +25,11 @@ export function AdminShell() {
       logoAside={<Badge tone="warning">Skrbnik</Badge>}
       topBar={<span className="truncate text-base font-semibold text-fg">Skrbnik platforme</span>}
       notice={
-        <div className="shrink-0 bg-inverse text-xs font-medium text-inverse-fg">
-          <div className="page py-1.5">Skrbniški pogled: vidite podatke vseh strank. Stranke tega dela ne vidijo.</div>
+        <div className="shrink-0 border-b border-border bg-warning-soft text-xs font-medium text-fg">
+          <div className="page py-1.5">
+            Skrbniški pogled: vidite številke vseh uporabniških računov, ne pa pogovorov in podatkov obiskovalcev. Stranke
+            tega dela ne vidijo.
+          </div>
         </div>
       }
       sidebarFooter={<UserMenu area="admin" />}
