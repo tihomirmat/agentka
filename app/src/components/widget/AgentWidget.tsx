@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { SendHorizontal } from 'lucide-react';
-import { demoAgentReply, previewAgentReply, type DemoState } from '@/data/api';
+import { assistantNoun, demoAgentReply, previewAgentReply, type DemoState } from '@/data/api';
 import { cn } from '@/lib/cn';
 import { Waveform } from '@/components/ui';
 
@@ -11,6 +11,12 @@ export const WIDGET_PREVIEW_NOTE =
 export interface AgentWidgetProps {
   agentName: string;
   businessName: string;
+  /**
+   * The chosen voice (agent.voice_id). Its gender decides the header line — "AI pomočnik" or
+   * "AI pomočnica" — by the same rule as the greeting (defaultFirstMessage). Without it
+   * (the landing demo: a male voice) the header says "AI pomočnik".
+   */
+  voiceId?: string;
   /** the greeting the agent opens with */
   firstMessage: string;
   /** show the text field (agent.widget_text_input) */
@@ -56,6 +62,7 @@ interface Turn {
 export function AgentWidget({
   agentName,
   businessName,
+  voiceId,
   firstMessage,
   textInput = true,
   accentHex,
@@ -131,7 +138,9 @@ export function AgentWidget({
           <Waveform bars={5} size={18} animated={speaking} />
           <div className="min-w-0">
             <p className="truncate text-base font-semibold">{agentName}</p>
-            <p className="truncate text-xs opacity-90">AI pomočnik · {businessName}</p>
+            <p className="truncate text-xs opacity-90">
+              {assistantNoun(voiceId ?? '')} · {businessName}
+            </p>
           </div>
         </header>
 

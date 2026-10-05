@@ -11,8 +11,8 @@ import {
   Dialog,
   EmptyState,
   Field,
-  IconButton,
   Input,
+  Notice,
   SkeletonRows,
   StatusPill,
   Textarea,
@@ -95,23 +95,28 @@ export function TextTab({ texts, loading, error, reload }: TextTabProps) {
                       {t.last_synced_at ? <span>Shranjeno {formatRelativeDateTime(t.last_synced_at)}</span> : null}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <StatusPill tone={status.tone} live={t.status === 'pending'} className="mr-2">
+                  <div className="flex shrink-0 items-center gap-2">
+                    <StatusPill tone={status.tone} live={t.status === 'pending'}>
                       {status.label}
                     </StatusPill>
-                    <IconButton
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       icon={Pencil}
-                      size="sm"
-                      label={`Uredi besedilo »${t.title}«`}
+                      aria-label={`Uredi besedilo »${t.title}«`}
                       onClick={() => open({ mode: 'edit', source: t })}
-                    />
-                    <IconButton
-                      icon={Trash2}
+                    >
+                      Uredi
+                    </Button>
+                    <Button
                       size="sm"
-                      variant="danger"
-                      label={`Odstrani besedilo »${t.title}«`}
+                      variant="ghost"
+                      icon={Trash2}
+                      aria-label={`Odstrani besedilo »${t.title}«`}
                       onClick={() => setRemoving(t)}
-                    />
+                    >
+                      Odstrani
+                    </Button>
                   </div>
                 </li>
               );
@@ -143,11 +148,9 @@ export function TextTab({ texts, loading, error, reload }: TextTabProps) {
         confirmLabel="Odstrani besedilo"
         onConfirm={async () => {
           if (!removing) return;
+          // The row disappears from the list: a toast says it, nothing else.
           const r = await remove.run(removing.id);
-          if (r) {
-            if (r.simulated) toast.info(r.message);
-            else toast.success(r.message);
-          }
+          if (r) toast.success(r.message);
         }}
       />
     </div>
@@ -241,10 +244,9 @@ function TextDialog({
           {chars(content.length)}
         </p>
         {serverError ? (
-          <p role="alert" className="flex items-start gap-1.5 text-sm text-danger">
-            <CircleAlert size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
-            <span>{serverError}</span>
-          </p>
+          <Notice size="sm" tone="danger">
+            {serverError}
+          </Notice>
         ) : null}
       </div>
     </Dialog>

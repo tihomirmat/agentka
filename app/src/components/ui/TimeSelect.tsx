@@ -15,6 +15,10 @@ export interface TimeSelectProps {
   id?: string;
   /** needed when the select is not inside a <Field> ("Ponedeljek, od") */
   'aria-label'?: string;
+  /** marks the time as wrong (danger border, like an <Input>); inside <Field error> it is automatic */
+  'aria-invalid'?: boolean | 'true' | 'false';
+  /** id of the element that says what is wrong */
+  'aria-describedby'?: string;
   size?: 'sm' | 'md';
   className?: string;
 }

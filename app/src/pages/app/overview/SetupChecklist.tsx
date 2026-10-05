@@ -1,63 +1,129 @@
-import { Circle, CircleCheck } from 'lucide-react';
-import { ButtonLink, Card, CardHeader, Skeleton } from '@/components/ui';
+import { Button, ButtonLink, Card, CardHeader, SkeletonRows, StepList, useToast, type Step } from '@/components/ui';
 import * as api from '@/data/api';
 import { plural } from '@/data/format';
-import { WIZARD_STEPS } from '@/data/labels';
-import { cn } from '@/lib/cn';
-
-interface Item {
-  key: string;
-  done: boolean;
-  /** undefined while the answer is still loading */
-  known: boolean;
-  title: string;
-  text: string;
-  to: string;
-  action: string;
-}
+import { AGENT_STATUS, AGENT_STATUS_HELP, WIZARD_STEPS } from '@/data/labels';
 
 /**
- * "Kaj še manjka": shown while the setup is not finished or the agent has no source to
- * answer from. It disappears by itself when both are done.
+ * "Kaj še manjka": the ONE place on Pregled that says what is missing before the agent can
+ * answer visitors. It reads the same facts as the status pill (the agent and
+ * api.getAgentReadiness), so the list and the status cannot contradict each other:
+ *   1. the first setup (wizard)         2. a knowledge source          3. switching the agent on
+ * It stays while the setup is open, a source is missing or the agent is still a draft, and
+ * disappears by itself when none of that is true. The shell strip is hidden on this page, so
+ * the message is said here once.
  */
 export function SetupChecklist() {
+  const toast = useToast();
   const session = api.useSession();
-  const sources = api.useQuery(() => api.listSources(), []);
+  const agent = api.useQuery(() => api.getAgent(), []);
+  const readiness = api.useQuery(() => api.getAgentReadiness(), []);
+  // The result of switching on is visible at once (the list and the pill change): toast only.
+  const activate = api.useAction(api.activateAgent, { onError: toast.error });
 
   const setupDone = session.onboardingStep === 'done';
-  const rows = sources.data;
-  const includedCount = rows?.filter((s) => s.included).length ?? 0;
-  const sourcesKnown = rows !== undefined;
-  const sourcesDone = sourcesKnown && includedCount > 0;
+  const a = agent.data;
+  const r = readiness.data;
 
-  if (setupDone && (!sourcesKnown || sourcesDone)) return null;
+  if (!a || !r) {
+    // A finished account sees nothing here, so do not flash a card for it while loading.
+    if (setupDone) return null;
+    return (
+      <Card>
+        <CardHeader title="Kaj še manjka" divider />
+        <SkeletonRows rows={3} />
+      </Card>
+    );
+  }
+
+  const sourcesMissing = r.missing.find((m) => m.key === 'sources');
+  if (setupDone && !sourcesMissing && a.status !== 'draft') return null;
 
   const stepNumber = session.onboardingStep === 'done' ? 1 : session.onboardingStep;
   const stepLabel = WIZARD_STEPS.find((s) => s.step === stepNumber)?.label ?? '';
+  const missingPill = { tone: 'warning', label: 'Manjka' } as const;
 
-  const items: Item[] = [
-    {
-      key: 'setup',
-      done: setupDone,
-      known: true,
-      title: 'Začetna nastavitev',
-      text: setupDone ? 'Končana.' : `Čarovnik je pri koraku ${stepNumber} od ${WIZARD_STEPS.length}: ${stepLabel}.`,
-      to: `/zacetek/${stepNumber}`,
-      action: `Nadaljuj pri koraku ${stepNumber}`,
-    },
-    {
-      key: 'sources',
-      done: sourcesDone,
-      known: sourcesKnown,
-      title: 'Viri znanja',
-      text: sourcesDone
-        ? `Vključenih virov: ${includedCount}.`
-        : 'Uvozite spletno stran ali dodajte besedilo, sicer agent ne more odgovarjati.',
-      to: '/app/viri',
-      action: 'Dodaj vire',
-    },
-  ];
-  const missing = items.filter((i) => !i.done).length;
+  const setup: Step = setupDone
+    ? { id: 'setup', title: 'Začetna nastavitev', detail: 'Končana.', state: 'done' }
+    : {
+        id: 'setup',
+        title: 'Začetna nastavitev',
+        detail: `Čarovnik je pri koraku ${stepNumber} od ${WIZARD_STEPS.length}: ${stepLabel}.`,
+        state: 'current',
+        pill: missingPill,
+        action: (
+          <ButtonLink to={`/zacetek/${stepNumber}`} size="sm">
+            Nadaljuj pri koraku {stepNumber}
+          </ButtonLink>
+        ),
+      };
+
+  const sources: Step = sourcesMissing
+    ? {
+        id: 'sources',
+        title: sourcesMissing.title,
+        detail: sourcesMissing.text,
+        state: 'current',
+        pill: missingPill,
+        action: (
+          <ButtonLink to={sourcesMissing.action.to} size="sm">
+            {sourcesMissing.action.label}
+          </ButtonLink>
+        ),
+      }
+    : { id: 'sources', title: 'Viri znanja', detail: 'Agent ima vsaj en vključen vir znanja.', state: 'done' };
+
+  let agentRow: Step;
+  if (a.status === 'draft') {
+    if (!r.canActivate) {
+      agentRow = {
+        id: 'agent',
+        title: 'Vklop agenta',
+        detail: 'Agenta boste lahko vklopili, ko bo vključen vsaj en vir znanja.',
+        state: 'waiting',
+      };
+    } else if (!setupDone) {
+      agentRow = {
+        id: 'agent',
+        title: 'Vklop agenta',
+        detail: 'Agent se vklopi, ko končate začetno nastavitev.',
+        state: 'waiting',
+      };
+    } else {
+      agentRow = {
+        id: 'agent',
+        title: 'Vklop agenta',
+        // What the status means is said once, next to the widget; here only that nothing else is missing.
+        detail: 'Vsi pogoji za vklop so izpolnjeni.',
+        state: 'current',
+        pill: missingPill,
+        action: (
+          <Button
+            size="sm"
+            loading={activate.pending}
+            onClick={async () => {
+              const result = await activate.run();
+              if (result) toast.success(result.message);
+            }}
+          >
+            Vklopi agenta
+          </Button>
+        ),
+      };
+    }
+  } else {
+    // Switched on (or stopped for a reason that is explained on the pill): nothing to do here.
+    const status = AGENT_STATUS[a.status];
+    agentRow = {
+      id: 'agent',
+      title: 'Vklop agenta',
+      detail: AGENT_STATUS_HELP[a.status],
+      state: a.status === 'active' ? 'done' : 'current',
+      pill: { tone: status.tone, label: status.label },
+    };
+  }
+
+  const steps = [setup, sources, agentRow];
+  const missing = steps.filter((s) => s.state !== 'done').length;
 
   return (
     <Card>
@@ -66,36 +132,7 @@ export function SetupChecklist() {
         description={`Še ${plural(missing, ['korak', 'koraka', 'koraki', 'korakov'])} do agenta, ki lahko odgovarja obiskovalcem.`}
         divider
       />
-      <ul>
-        {items.map((item) => (
-          <li
-            key={item.key}
-            className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2 border-b border-border px-4 py-3.5 last:border-b-0 sm:px-5"
-          >
-            {item.known ? (
-              item.done ? (
-                <CircleCheck size={20} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
-              ) : (
-                <Circle size={20} className="mt-0.5 shrink-0 text-fg-subtle" aria-hidden="true" />
-              )
-            ) : (
-              <Skeleton className="mt-0.5 h-5 w-5 rounded-full" />
-            )}
-            <div className="min-w-0 flex-1 basis-48">
-              <p className={cn('text-base font-medium', item.done ? 'text-fg-muted' : 'text-fg')}>
-                {item.title}
-                <span className="sr-only">{item.known ? (item.done ? ' (opravljeno)' : ' (manjka)') : ''}</span>
-              </p>
-              <p className="text-sm text-fg-muted">{item.known ? item.text : 'Preverjam stanje …'}</p>
-            </div>
-            {item.known && !item.done ? (
-              <ButtonLink to={item.to} size="sm" className="shrink-0">
-                {item.action}
-              </ButtonLink>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+      <StepList steps={steps} />
     </Card>
   );
 }

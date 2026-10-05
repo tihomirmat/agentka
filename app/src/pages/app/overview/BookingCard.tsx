@@ -1,8 +1,8 @@
-import { ButtonLink, Card, CardBody, CardFooter, CardHeader, StatusPill } from '@/components/ui';
+import { ButtonLink, Card, CardBody, CardFooter, CardHeader, FactList, StatusPill } from '@/components/ui';
 import * as api from '@/data/api';
 import { formatRelativeDateTime } from '@/data/format';
 import { BOOKING_MODE, BOOKING_STATUS } from '@/data/labels';
-import { Detail, Details, Pending } from './parts';
+import { Pending } from './parts';
 
 function CalendarState({
   connection,
@@ -26,7 +26,7 @@ function CalendarState({
         <span>
           <StatusPill tone={expired ? 'warning' : 'danger'}>{expired ? 'Povezava je potekla' : 'Napaka povezave'}</StatusPill>
         </span>
-        <span className="text-sm text-fg-muted">Koledar povežite znova pod Termini.</span>
+        <span className="text-sm text-fg-muted">Koledar povežite znova v razdelku Termini.</span>
       </span>
     );
   }
@@ -68,24 +68,25 @@ export function BookingCard() {
       {settings.data && calendar.data !== undefined && bookings.data ? (
         <>
           <CardBody className="flex flex-col gap-4">
-            <Details>
-              <Detail label="Koledar">
-                <CalendarState connection={calendar.data} mode={settings.data.mode} />
-              </Detail>
-              <Detail label="Naslednji termin">
-                {next ? (
-                  <span className="flex min-w-0 flex-col gap-1">
-                    <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-                      <span className="font-medium">{formatRelativeDateTime(next.start)}</span>
-                      <StatusPill tone={BOOKING_STATUS[next.status].tone}>{BOOKING_STATUS[next.status].label}</StatusPill>
+            <FactList
+              items={[
+                { label: 'Koledar', value: <CalendarState connection={calendar.data} mode={settings.data.mode} /> },
+                {
+                  label: 'Naslednji termin',
+                  value: next ? (
+                    <span className="flex min-w-0 flex-col gap-1">
+                      <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                        <span className="font-medium">{formatRelativeDateTime(next.start)}</span>
+                        <StatusPill tone={BOOKING_STATUS[next.status].tone}>{BOOKING_STATUS[next.status].label}</StatusPill>
+                      </span>
+                      <span className="truncate text-sm text-fg-muted">{next.customer_name}</span>
                     </span>
-                    <span className="truncate text-sm text-fg-muted">{next.customer_name}</span>
-                  </span>
-                ) : (
-                  <span className="text-fg-muted">Ni prihajajočih terminov.</span>
-                )}
-              </Detail>
-            </Details>
+                  ) : (
+                    <span className="text-fg-muted">Ni prihajajočih terminov.</span>
+                  ),
+                },
+              ]}
+            />
           </CardBody>
           <CardFooter>
             <ButtonLink to="/app/termini" size="sm">

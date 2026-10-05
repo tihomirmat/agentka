@@ -369,8 +369,13 @@ export interface AdminAccountRow {
   account: Account;
   plan: Plan | null;
   agent_status: AgentStatus;
-  /** why the agent is paused, when it is */
+  /** the weightiest reason the agent is paused, when it is */
   agent_paused_by: PausedBy | null;
+  /**
+   * EVERY pause in force, weightiest first (payment, limit, admin, customer) — the admin's own
+   * pause is in here even when a failed payment outranks it. Empty when nothing holds the agent.
+   */
+  agent_pause_reasons: PausedBy[];
   /** business contact of the account owner */
   owner_name: string;
   owner_email: string;

@@ -18,8 +18,10 @@ const VARIANTS: Record<ButtonVariant, string> = {
   danger: 'bg-danger-solid text-danger-fg hover:bg-danger-solid-hover',
 };
 
+// `sm` is 32px with a mouse and at least 40px on a touch screen (the same rule as the `tap` class
+// in styles/index.css); `md` is 40px everywhere.
 const SIZES: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-sm',
+  sm: 'h-8 px-3 text-sm [@media(pointer:coarse)]:min-h-10',
   md: 'h-10 px-4 text-base',
 };
 

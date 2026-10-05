@@ -1,14 +1,21 @@
 import { useRef, useState } from 'react';
 import { CircleAlert } from 'lucide-react';
-import { Button, Card, CardBody, ConfirmDialog, EmptyState, PageHeader, SkeletonText, useToast } from '@/components/ui';
+import { Button, Card, CardBody, ConfirmDialog, EmptyState, Notice, PageHeader, SkeletonText, useToast } from '@/components/ui';
 import * as api from '@/data/api';
-import { formatDate, formatEur, formatEurExact, formatMinutes, formatMinutesOf } from '@/data/format';
+import { formatDate, formatEur, formatEurExact, formatMinutes, formatMinutesOf, formatNumber } from '@/data/format';
+import { TRIAL } from '@/data/labels';
 import { BillingCard } from './subscription/BillingCard';
 import { CurrentPlanCard } from './subscription/CurrentPlanCard';
 import { InvoicesCard } from './subscription/InvoicesCard';
-import { Notice } from './subscription/Notice';
 import { PlansSection } from './subscription/PlansSection';
 import { UsageCard } from './subscription/UsageCard';
+
+/** Where the last simulated result is shown: next to the control that caused it, only one at a time. */
+type Area = 'status' | 'plans' | 'billing';
+interface Outcome {
+  area: Area;
+  message: string;
+}
 
 interface StatusNoticeProps {
   account: api.Account;
@@ -23,9 +30,9 @@ interface StatusNoticeProps {
 }
 
 /**
- * One clear notice for a state that needs action, with the one action that fixes it.
- * The app frame already shows a one-line pointer to this page for the first two states;
- * this notice says what exactly is wrong and carries the button.
+ * The page's own notice for a state that needs action: the facts that are specific to this
+ * account and the one action that fixes it. The shell strip says the same thing on every
+ * other page and is hidden here, so this is the only copy on this screen.
  */
 function StatusNotice({ account, failedInvoice, upgradeTo, portalPending, onPortal, onUpgrade, onShowPlans }: StatusNoticeProps) {
   if (account.status === 'past_due') {
@@ -43,7 +50,7 @@ function StatusNotice({ account, failedInvoice, upgradeTo, portalPending, onPort
           </Button>
         }
       >
-        Posodobite plačilno sredstvo v portalu za plačila.
+        Agent je začasno ustavljen, dokler plačila ne uredite.
       </Notice>
     );
   }
@@ -107,6 +114,36 @@ function PageSkeleton() {
   );
 }
 
+/**
+ * The consequence of a plan change, stated BEFORE the click. A cheaper plan says what the
+ * person gives up.
+ */
+function PlanChangeText({ account, current, next }: { account: api.Account; current: api.Plan | undefined; next: api.Plan }) {
+  const used = Math.round(account.minutes_used);
+  const lessIncluded = next.minutes_included < account.minutes_included;
+  const before = current
+    ? `${current.name}, ${formatEur(current.price_month_eur)} na mesec`
+    : account.status === 'trial'
+      ? TRIAL.name
+      : 'brez plačilnega paketa';
+  return (
+    <>
+      <span className="block">{`Zdaj: ${before}, ${formatMinutes(account.minutes_included)} vključenih.`}</span>
+      <span className="block">
+        {`Novo: ${next.name}, ${formatEur(next.price_month_eur)} na mesec, ${formatMinutes(next.minutes_included)} vključenih.`}
+      </span>
+      {lessIncluded ? (
+        <span className="mt-2 block">
+          {`Vključenih bo ${formatMinutes(next.minutes_included)}; v tem obdobju ste jih porabili ${formatNumber(used)}.${
+            used > next.minutes_included ? ' To je več, kot jih vključuje novi paket.' : ''
+          }`}
+        </span>
+      ) : null}
+      <span className="mt-2 block">Predogled: paket se zamenja takoj in brez plačila.</span>
+    </>
+  );
+}
+
 export default function Subscription() {
   const toast = useToast();
   const account = api.useQuery(() => api.getAccount(), []);
@@ -114,7 +151,7 @@ export default function Subscription() {
   const invoices = api.useQuery(() => api.listInvoices(), []);
 
   const [chosen, setChosen] = useState<api.Plan | null>(null);
-  const [portalMessage, setPortalMessage] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
   const plansRef = useRef<HTMLElement>(null);
 
   const change = api.useAction(api.changePlan, { onError: (m) => toast.error(m) });
@@ -122,19 +159,22 @@ export default function Subscription() {
 
   const showPlans = () => plansRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  async function openPortal() {
-    const result = await portal.run();
-    if (!result) return;
-    setPortalMessage(result.message);
-    if (result.simulated) toast.info(result.message);
+  /** A simulated outside action leaves ONE notice next to its control and no toast. */
+  function report(area: Area, result: api.ActionResult) {
+    if (result.simulated) setOutcome({ area, message: result.message });
     else toast.success(result.message);
   }
 
+  async function openPortal(area: Area) {
+    setOutcome(null);
+    const result = await portal.run();
+    if (result) report(area, result);
+  }
+
   async function confirmChange(plan: api.Plan) {
+    setOutcome(null);
     const result = await change.run(plan.key);
-    if (!result) return;
-    if (result.simulated) toast.info(result.message);
-    else toast.success(result.message);
+    if (result) report('plans', result);
   }
 
   const header = (
@@ -181,6 +221,7 @@ export default function Subscription() {
   const upgradeTo = current
     ? [...allPlans].sort((a, b) => a.price_month_eur - b.price_month_eur).find((p) => p.price_month_eur > current.price_month_eur)
     : undefined;
+  const messageFor = (area: Area) => (outcome?.area === area ? outcome.message : null);
 
   return (
     <>
@@ -191,19 +232,31 @@ export default function Subscription() {
           failedInvoice={invoices.data?.find((i) => i.status === 'failed')}
           upgradeTo={upgradeTo}
           portalPending={portal.pending}
-          onPortal={openPortal}
+          onPortal={() => openPortal('status')}
           onUpgrade={setChosen}
           onShowPlans={showPlans}
         />
+        {messageFor('status') ? (
+          <Notice size="sm" tone="neutral">
+            {messageFor('status')}
+          </Notice>
+        ) : null}
 
         <div className="grid min-w-0 gap-6 lg:grid-cols-2">
           <CurrentPlanCard account={acc} plan={current} onShowPlans={showPlans} />
           <UsageCard account={acc} />
         </div>
 
-        <PlansSection ref={plansRef} plans={allPlans} currentKey={acc.plan_key} busy={change.pending} onChoose={setChosen} />
+        <PlansSection
+          ref={plansRef}
+          plans={allPlans}
+          currentKey={acc.plan_key}
+          busy={change.pending}
+          lastMessage={messageFor('plans')}
+          onChoose={setChosen}
+        />
 
-        <BillingCard pending={portal.pending} lastMessage={portalMessage} onManage={openPortal} />
+        <BillingCard pending={portal.pending} lastMessage={messageFor('billing')} onManage={() => openPortal('billing')} />
 
         <InvoicesCard
           invoices={invoices.data}
@@ -221,17 +274,7 @@ export default function Subscription() {
             if (!open) setChosen(null);
           }}
           title={current ? `Preklopim na paket ${chosen.name}?` : `Izberem paket ${chosen.name}?`}
-          description={
-            <>
-              <span className="block">
-                {current ? `Zdaj: ${current.name}, ${formatEur(current.price_month_eur)} na mesec.` : 'Zdaj: brez plačilnega paketa.'}
-              </span>
-              <span className="block">
-                {`Novo: ${chosen.name}, ${formatEur(chosen.price_month_eur)} na mesec, ${formatMinutes(chosen.minutes_included)} vključenih.`}
-              </span>
-              <span className="mt-2 block">Kdaj sprememba začne veljati, vam pove sporočilo po potrditvi.</span>
-            </>
-          }
+          description={<PlanChangeText account={acc} current={current} next={chosen} />}
           confirmLabel={current ? `Preklopi na ${chosen.name}` : `Izberi paket ${chosen.name}`}
           onConfirm={() => confirmChange(chosen)}
         />

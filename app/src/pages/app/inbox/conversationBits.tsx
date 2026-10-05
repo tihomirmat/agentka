@@ -1,5 +1,6 @@
 import { MailWarning } from 'lucide-react';
 import type { Conversation } from '@/data/api';
+import { EMAIL_KIND } from '@/data/labels';
 import { cn } from '@/lib/cn';
 
 /** The name of the visitor, or a quiet "Neznan obiskovalec". */
@@ -11,13 +12,13 @@ export function VisitorName({ name, className }: { name: string | null; classNam
   );
 }
 
-/** Which e-mail of a conversation did not arrive, in plain words; null when none failed. */
+/** Which e-mail of a conversation did not arrive, named as everywhere else (labels.ts); null when none failed. */
 export function emailProblem(c: Pick<Conversation, 'visitor_email_status' | 'owner_email_status'>): string | null {
   const visitor = c.visitor_email_status === 'failed';
   const owner = c.owner_email_status === 'failed';
-  if (visitor && owner) return 'E-pošta ni dostavljena';
-  if (visitor) return 'E-pošta obiskovalcu ni dostavljena';
-  if (owner) return 'E-pošta vam ni dostavljena';
+  if (visitor && owner) return 'Sporočili nista dostavljeni';
+  if (visitor) return `${EMAIL_KIND.visitor_confirmation} ni dostavljena`;
+  if (owner) return `${EMAIL_KIND.owner_notification} ni dostavljeno`;
   return null;
 }
 

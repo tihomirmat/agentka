@@ -1,4 +1,4 @@
-import { Card, CardBody, CardFooter, CardHeader, SampleDataNote, StatusPill } from '@/components/ui';
+import { Card, CardBody, CardFooter, CardHeader, StatusPill } from '@/components/ui';
 import { formatDuration } from '@/data/format';
 import { BOOKING_STATUS, CONVERSATION_OUTCOME, EMAIL_KIND_PUBLIC, EMAIL_STATUS } from '@/data/labels';
 import { Section, SectionHead } from './Section';
@@ -12,7 +12,9 @@ const OUTCOME_HELP: { key: keyof typeof CONVERSATION_OUTCOME; text: string }[] =
 
 /**
  * A static excerpt of Pogovori → detail. api.listConversations() needs a signed-in
- * account (it throws "Niste prijavljeni"), so this card is a local example, marked as such.
+ * account (it throws "Niste prijavljeni"), so this card is a local example, marked as such in
+ * its footer. This is the one place on the landing page where the app is shown, so it is also
+ * the one place that says what the assistant is called there ("agent").
  */
 export function WhatYouSee() {
   const outcome = CONVERSATION_OUTCOME[c.outcome];
@@ -24,7 +26,7 @@ export function WhatYouSee() {
           <SectionHead
             id="kaj-vidite-vi-naslov"
             title="Kaj vidite vi"
-            lead="V aplikaciji najdete vsak pogovor s povzetkom, podatki, ki jih je obiskovalec pustil, in izidom. Pogovor lahko preberete tudi kot zapis po vrsti."
+            lead="V aplikaciji (tam pomočnika imenujemo agent) najdete vsak pogovor s povzetkom, podatki, ki jih je obiskovalec pustil, in izidom. Preberete lahko tudi celoten prepis pogovora."
           />
           <p className="eyebrow mt-8">Trije izidi pogovora</p>
           <ul className="mt-3 flex flex-col gap-3">
@@ -88,7 +90,6 @@ export function WhatYouSee() {
             </div>
           </CardBody>
           <CardFooter className="justify-start gap-3 rounded-b-lg bg-surface-2 text-sm text-fg-muted">
-            <SampleDataNote />
             Izmišljen pogovor, prikazan tako, kot ga vidite v aplikaciji.
           </CardFooter>
         </Card>

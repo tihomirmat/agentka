@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { getAccount, getAgent, getAgentReadiness, useQuery, useSession } from '@/data/api';
 import { dayDiff, formatDaysLeft, formatMinutesOf } from '@/data/format';
-import { AGENT_STATUS, AGENT_STATUS_HELP, agentStatusText, PAUSED_BY, TRIAL, WIZARD_STEPS } from '@/data/labels';
+import { AGENT_STATUS, AGENT_STATUS_HELP, agentStatusText, pausedByHelp, TRIAL, WIZARD_STEPS } from '@/data/labels';
 import { cn } from '@/lib/cn';
 import { ProgressBar, Skeleton, StatusPill, Tooltip } from '@/components/ui';
 import { NOTICE_BOX, NOTICE_ICON, NOTICE_ICON_COLOR, type NoticeTone } from '@/components/ui/Notice';
@@ -120,7 +120,8 @@ export function AppShell() {
           tone: 'info',
           text: 'Agent je še osnutek: nima še nobenega vključenega vira znanja, zato ga obiskovalci ne vidijo.',
           action: missing.action,
-          hideOn: ['/app/pregled', missing.action.to],
+          // Viri and Nastavitve carry the reason and the action themselves.
+          hideOn: ['/app/pregled', '/app/viri', '/app/nastavitve', missing.action.to],
         }
       : {
           tone: 'info',
@@ -132,9 +133,11 @@ export function AppShell() {
   const notice: ReactNode = strip && !strip.hideOn.includes(pathname) ? <ShellStrip strip={strip} /> : null;
 
   const trialDays = a?.status === 'trial' && a.trial_ends_at ? Math.max(0, dayDiff(a.trial_ends_at)) : null;
+  // The tooltip and the accessible name of the pill exist on EVERY page, Nastavitve included, where
+  // the customer's own pause must not send the person "v Nastavitvah" (pausedByHelp).
   const statusHelp = ag
     ? ag.status === 'paused' && ag.paused_by
-      ? `${AGENT_STATUS_HELP.paused} ${PAUSED_BY[ag.paused_by].help}`
+      ? `${AGENT_STATUS_HELP.paused} ${pausedByHelp(ag.paused_by, pathname === '/app/nastavitve' ? 'settings' : undefined)}`
       : AGENT_STATUS_HELP[ag.status]
     : '';
 

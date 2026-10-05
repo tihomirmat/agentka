@@ -1,7 +1,9 @@
 /**
- * What the wizard keeps between steps. The drafts live in the Wizard page, so "Nazaj"
- * and "Preskoči" never lose what the person has typed; only "Naprej" writes to the api.
+ * What the wizard keeps between steps. The drafts live in the Wizard page (in the shared
+ * `useDraft`), so "Nazaj" and "Preskoči" never lose what the person has typed; only
+ * "Naprej" writes to the api.
  */
+import { defaultFirstMessage } from '@/data/api';
 import type {
   Account,
   Agent,
@@ -47,7 +49,7 @@ export interface Drafts {
 export interface StepNav {
   /** absent on step 1 */
   onBack?: () => void;
-  /** leave this step without saving its fields */
+  /** leave this step without saving its fields (the last step has none: the shell has "Nadaljuj pozneje") */
   onSkip: () => void;
   /** call after the step's fields are saved */
   onDone: () => Promise<void>;
@@ -68,9 +70,12 @@ export function stripProtocol(url: string): string {
   return url.trim().replace(/^[a-z]+:\/\//i, '').replace(/\/+$/, '');
 }
 
-/** "https://www.Spletnost.si/kontakt" → "www.spletnost.si" (for comparing two addresses) */
+/**
+ * "https://www.Spletnost.si/kontakt?x=1" → "spletnost.si": the ONE spelling of an address
+ * (no protocol, no "www.", no path), the same one the api stores and prints everywhere.
+ */
 export function hostOf(url: string): string {
-  return stripProtocol(url).split('/')[0]?.toLowerCase() ?? '';
+  return (stripProtocol(url).split(/[/?#]/)[0] ?? '').toLowerCase().replace(/^www\./, '');
 }
 
 /** Returns a sentence when the address cannot be a web site, otherwise null. Empty is not an error here. */
@@ -83,9 +88,12 @@ export function urlProblem(url: string): string | null {
   return null;
 }
 
-export function buildGreeting(agentName: string, businessName: string): string {
-  const who = businessName.trim() ? `AI pomočnik podjetja ${businessName.trim()}` : 'AI pomočnik';
-  return `Pozdravljeni, sem ${agentName.trim() || 'agent'}, ${who}. Kako vam lahko pomagam?`;
+/**
+ * The greeting a new agent starts with, built by the api's own function so the wizard, the
+ * registration and Nastavitve write the same sentence ("AI pomočnica" for a female voice).
+ */
+export function greetingFor(agentName: string, businessName: string, voiceId: string): string {
+  return defaultFirstMessage(agentName.trim() || 'agent', businessName, voiceId);
 }
 
 /** The greeting must tell the visitor that this is an AI assistant. */

@@ -7,6 +7,7 @@ import {
   EmptyState,
   Field,
   Input,
+  Notice,
   SkeletonRows,
   StatusPill,
   Switch,
@@ -16,8 +17,7 @@ import * as api from '@/data/api';
 import { formatNumber, formatUrl } from '@/data/format';
 import { SOURCE_STATUS } from '@/data/labels';
 import { cn } from '@/lib/cn';
-import { hostOf, messageOf, stripProtocol, urlProblem, type StepNav, type WebsiteDraft } from '../draft';
-import { Callout } from '../parts';
+import { hostOf, messageOf, urlProblem, type StepNav, type WebsiteDraft } from '../draft';
 
 interface Props extends StepNav {
   draft: WebsiteDraft;
@@ -40,9 +40,15 @@ export function WebsiteStep({ draft, onChange, account, onSkip, onDone }: Props)
   const all = sources.data;
   const pages = (all ?? []).filter((s) => s.type === 'website_page');
   const includedPages = pages.filter((p) => (shown[p.id] ?? p.included)).length;
+  // Pages the import left out on its own, with the reason in `note` (gone once the person decides).
+  const leftOut = pages.some((p) => p.note && !(shown[p.id] ?? p.included));
   const knowsNothing = all !== undefined && !all.some((s) => s.included);
   const importing = importSite.pending;
-  const typedNotImported = draft.url.trim() !== '' && hostOf(draft.url) !== hostOf(account.website_url);
+  const hasAddress = draft.url.trim() !== '';
+  // The address on screen is not the one the pages were read from.
+  const typedNotImported = hasAddress && hostOf(draft.url) !== hostOf(account.website_url);
+  // Until the pages of THIS address are in, "Uvozi stran" is the step's main action.
+  const needsImport = hasAddress && all !== undefined && (pages.length === 0 || typedNotImported);
 
   // Forget a local switch value as soon as the stored one matches it.
   useEffect(() => {
@@ -71,6 +77,12 @@ export function WebsiteStep({ draft, onChange, account, onSkip, onDone }: Props)
     const result = await importSite.run(draft.url.trim());
     if (!result) return;
     setImportNote(result.message);
+    // The api keeps one spelling of the address (no "www.", no path); show it in the field too.
+    try {
+      onChange({ url: hostOf((await api.getAccount()).website_url) });
+    } catch {
+      // the field keeps what was typed; the pages and the message already use the saved address
+    }
   }
 
   async function setIncluded(id: string, included: boolean) {
@@ -88,7 +100,7 @@ export function WebsiteStep({ draft, onChange, account, onSkip, onDone }: Props)
     setBusyNext(true);
     try {
       if (typedNotImported) {
-        await api.updateAccount({ website_url: `https://${stripProtocol(draft.url)}` });
+        await api.updateAccount({ website_url: `https://${hostOf(draft.url)}` });
       }
       await onDone();
     } catch (e) {
@@ -108,46 +120,55 @@ export function WebsiteStep({ draft, onChange, account, onSkip, onDone }: Props)
         </Button>
       }
       next={
-        <Button variant="primary" loading={busyNext} disabled={importing} onClick={next}>
+        <Button variant={needsImport ? 'secondary' : 'primary'} loading={busyNext} disabled={importing} onClick={next}>
           Naprej
         </Button>
       }
     >
       <div className="flex min-w-0 flex-col gap-6">
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
-          <Field
-            className="sm:flex-1"
-            label="Naslov spletne strani"
-            hint="Vpišite naslov brez poti, na primer vasepodjetje.si."
-            error={fieldError}
-          >
-            <Input
-              type="text"
-              inputMode="url"
-              autoComplete="url"
-              spellCheck={false}
-              prefix="https://"
-              placeholder="vasepodjetje.si"
-              value={draft.url}
-              disabled={importing}
-              onChange={(e) => {
-                setFieldError(null);
-                onChange({ url: e.target.value.replace(/^\s*[a-z]+:\/\//i, '') });
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void runImport();
-                }
-              }}
-            />
-          </Field>
-          {/* Same height as the field's label row, so the button lines up with the input on wide screens. */}
-          <div className="sm:pt-[1.625rem]">
-            <Button loading={importing} onClick={runImport} className="w-full sm:w-auto">
-              Uvozi stran
-            </Button>
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
+            <Field
+              className="sm:flex-1"
+              label="Naslov spletne strani"
+              hint="Vpišite glavni naslov, na primer vasepodjetje.si. Poti do podstrani ne potrebujete."
+              error={fieldError}
+            >
+              <Input
+                type="text"
+                inputMode="url"
+                autoComplete="url"
+                spellCheck={false}
+                prefix="https://"
+                placeholder="vasepodjetje.si"
+                value={draft.url}
+                disabled={importing}
+                onChange={(e) => {
+                  setFieldError(null);
+                  onChange({ url: e.target.value.replace(/^\s*[a-z]+:\/\//i, '') });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void runImport();
+                  }
+                }}
+              />
+            </Field>
+            {/* Same height as the field's label row, so the button lines up with the input on wide screens. */}
+            <div className="sm:pt-[1.625rem]">
+              <Button
+                variant={needsImport ? 'primary' : 'secondary'}
+                loading={importing}
+                onClick={runImport}
+                className="w-full sm:w-auto"
+              >
+                Uvozi stran
+              </Button>
+            </div>
           </div>
+          {/* The result of the (simulated) import stays next to the button that caused it. */}
+          {importNote && !importing ? <Notice size="sm" tone="neutral">{importNote}</Notice> : null}
         </div>
 
         <section aria-labelledby="wizard-pages-title" className="min-w-0">
@@ -157,13 +178,14 @@ export function WebsiteStep({ draft, onChange, account, onSkip, onDone }: Props)
             </h2>
             {pages.length > 0 ? (
               <p className="nums text-sm font-medium text-fg-muted" aria-live="polite">
-                Vključenih {formatNumber(includedPages)} od {formatNumber(pages.length)} strani
+                Vključeno: {formatNumber(includedPages)} od {formatNumber(pages.length)} strani
               </p>
             ) : null}
           </div>
           <p className="mt-1 text-sm text-fg-muted">
-            Izklopite strani, ki jih agent ne sme uporabljati, na primer testne strani ali pravne strani, kot sta
-            politika zasebnosti in piškotki.
+            {leftOut
+              ? 'Nekatere strani smo že izključili; razlog piše pod njihovim naslovom. Izklopite še strani, ki jih agent ne sme uporabljati, na primer testne strani.'
+              : 'Izklopite strani, ki jih agent ne sme uporabljati, na primer testne strani ali pravne strani, kot sta politika zasebnosti in piškotki.'}
           </p>
 
           <Card className="mt-3">
@@ -181,9 +203,9 @@ export function WebsiteStep({ draft, onChange, account, onSkip, onDone }: Props)
               )
             ) : (
               <ul
-                aria-label="Strani, ki jih je agent našel"
+                aria-label="Najdene strani"
                 tabIndex={0}
-                className="relative max-h-[22rem] min-w-0 overflow-y-auto rounded-lg"
+                className="relative max-h-[26rem] min-w-0 overflow-y-auto rounded-lg"
               >
                 {pages.map((p) => {
                   const included = shown[p.id] ?? p.included;
@@ -205,6 +227,8 @@ export function WebsiteStep({ draft, onChange, account, onSkip, onDone }: Props)
                           {p.title}
                         </p>
                         <p className="truncate font-mono text-xs text-fg-subtle">{formatUrl(p.url ?? '')}</p>
+                        {/* Why the import suggests leaving this page out; gone as soon as the person decides. */}
+                        {p.note ? <p className="mt-0.5 text-sm text-fg-muted">{p.note}</p> : null}
                         {p.status === 'error' && p.error ? (
                           <p className="mt-0.5 text-sm text-danger">{p.error}</p>
                         ) : null}
@@ -223,32 +247,30 @@ export function WebsiteStep({ draft, onChange, account, onSkip, onDone }: Props)
         </section>
 
         {importing && pages.length > 0 ? (
-          <Callout tone="info" title="Branje strani poteka.">
-            Najdenih je {formatNumber(pages.length)} strani. Počakajte, da se stanje vseh strani spremeni v
-            »Sinhronizirano«.
-          </Callout>
-        ) : null}
-
-        {importNote && !importing ? (
-          <Callout tone="info" title="Rezultat uvoza">
-            {importNote}
-          </Callout>
+          <Notice tone="info" title="Branje strani poteka.">
+            Najdenih je {formatNumber(pages.length)} strani. Počakajte, da se stanje vseh strani spremeni v »
+            {SOURCE_STATUS.synced.label}«.
+          </Notice>
         ) : null}
 
         {sources.error && sources.data === undefined ? (
-          <Callout tone="danger" title={sources.error}>
-            <Button size="sm" onClick={sources.reload}>
-              Poskusi znova
-            </Button>
-          </Callout>
+          <Notice
+            tone="danger"
+            title={sources.error}
+            action={
+              <Button size="sm" onClick={sources.reload}>
+                Poskusi znova
+              </Button>
+            }
+          />
         ) : null}
 
         {knowsNothing && !importing ? (
-          <Callout tone="warning" title="Agent zdaj ne ve ničesar o vašem podjetju.">
-            {typedNotImported
+          <Notice tone="warning" title="Agent zdaj ne ve ničesar o vašem podjetju.">
+            {hasAddress && pages.length === 0
               ? 'Naslov ste vpisali, strani pa še niste uvozili. Pritisnite »Uvozi stran«. Če greste naprej brez uvoza, agent ne bo znal odgovarjati, dokler ne uvozite vsaj ene strani.'
-              : 'Naprej lahko greste tudi brez strani, vendar agent ne bo znal odgovarjati, dokler ne uvozite vsaj ene strani. Uvoz lahko opravite tudi pozneje pod Viri znanja.'}
-          </Callout>
+              : 'Naprej lahko greste tudi brez strani, vendar agent ne bo znal odgovarjati, dokler ne uvozite vsaj ene strani. Uvoz lahko opravite tudi pozneje v razdelku Viri znanja.'}
+          </Notice>
         ) : null}
       </div>
     </WizardStep>

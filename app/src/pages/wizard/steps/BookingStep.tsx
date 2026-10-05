@@ -1,11 +1,24 @@
 import { useState } from 'react';
 import { CalendarCheck, CalendarPlus, Inbox } from 'lucide-react';
 import { WizardStep } from '@/components/layout';
-import { Button, Card, CardBody, Field, Select, SkeletonText, StatusPill, Switch } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardBody,
+  ChoiceCard,
+  Field,
+  Notice,
+  Select,
+  SkeletonText,
+  StatusPill,
+  Switch,
+  TimeSelect,
+  useToast,
+} from '@/components/ui';
 import * as api from '@/data/api';
 import { BOOKING_MODE, WEEKDAYS } from '@/data/labels';
+import { cn } from '@/lib/cn';
 import { LENGTH_CHOICES, messageOf, type BookingDraft, type StepNav } from '../draft';
-import { Callout, ChoiceOption } from '../parts';
 
 interface Props extends StepNav {
   draft: BookingDraft;
@@ -14,48 +27,36 @@ interface Props extends StepNav {
 
 type HourProblems = Partial<Record<api.Weekday, string>>;
 
-/**
- * Times are picked from a list in 24-hour format. A native <input type="time"> follows the
- * browser's own locale and can show "9:00 AM", which is wrong for this audience and does not
- * fit the narrow field on a phone.
- */
-const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
-
-function timeOptions(current: string) {
-  const list = current && !TIME_SLOTS.includes(current) ? [...TIME_SLOTS, current].sort() : TIME_SLOTS;
-  return list.map((value) => ({ value, label: value }));
-}
-
 function checkHours(hours: api.WorkingHours): { days: HourProblems; general: string | null } {
   const days: HourProblems = {};
   for (const d of WEEKDAYS) {
     const day = hours[d.key];
     if (!day.open) continue;
     if (!day.from || !day.to) days[d.key] = 'Vpišite začetek in konec delovnega časa.';
-    else if (day.from >= day.to) days[d.key] = 'Začetek mora biti pred koncem.';
+    else if (day.from >= day.to) days[d.key] = 'Konec mora biti po začetku. Primer: od 08:00 do 16:00.';
   }
   const general = WEEKDAYS.some((d) => hours[d.key].open) ? null : 'Izberite vsaj en delovni dan.';
   return { days, general };
 }
 
 export function BookingStep({ draft, onChange, onBack, onSkip, onDone }: Props) {
+  const toast = useToast();
   const calendar = api.useQuery(() => api.getCalendarConnection(), []);
   const [connectNote, setConnectNote] = useState<string | null>(null);
-  const [connectError, setConnectError] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<string | null>(null);
   const [problems, setProblems] = useState<{ days: HourProblems; general: string | null }>({ days: {}, general: null });
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const connect = api.useAction(api.connectCalendar, { onError: setConnectError });
+  const connect = api.useAction(api.connectCalendar, { onError: toast.error });
 
   const connection = calendar.data;
   const connected = connection?.status === 'connected';
   const auto = draft.mode === 'auto';
 
   async function runConnect() {
-    setConnectError(null);
+    setConnectNote(null);
     const result = await connect.run();
     if (!result) return;
+    // A simulated outside action: its result stays next to the button, no toast.
     setConnectNote(result.message);
     setBlocked(null);
   }
@@ -66,7 +67,6 @@ export function BookingStep({ draft, onChange, onBack, onSkip, onDone }: Props) 
   }
 
   async function next() {
-    setSaveError(null);
     setBlocked(null);
     if (auto && connected) {
       const found = checkHours(draft.hours);
@@ -88,7 +88,7 @@ export function BookingStep({ draft, onChange, onBack, onSkip, onDone }: Props) 
         setBlocked(message);
         onChange({ mode: 'request' });
       } else {
-        setSaveError(message);
+        toast.error(message);
       }
     } finally {
       setBusy(false);
@@ -123,7 +123,7 @@ export function BookingStep({ draft, onChange, onBack, onSkip, onDone }: Props) 
         <fieldset className="min-w-0">
           <legend className="sr-only">Način dogovarjanja terminov</legend>
           <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-            <ChoiceOption
+            <ChoiceCard
               name="wizard-mode"
               value="request"
               checked={!auto}
@@ -133,7 +133,7 @@ export function BookingStep({ draft, onChange, onBack, onSkip, onDone }: Props) 
               description={BOOKING_MODE.request.description}
               className="p-5"
             />
-            <ChoiceOption
+            <ChoiceCard
               name="wizard-mode"
               value="auto"
               checked={auto}
@@ -150,10 +150,10 @@ export function BookingStep({ draft, onChange, onBack, onSkip, onDone }: Props) 
         </fieldset>
 
         {blocked ? (
-          <Callout tone="warning" title={blocked}>
+          <Notice tone="warning" title={blocked}>
             Izbran je ostal način »{BOOKING_MODE.request.label}«. Povežite koledar in znova izberite samodejno
             rezervacijo ali pritisnite »Naprej« in nadaljujte s povpraševanji.
-          </Callout>
+          </Notice>
         ) : null}
 
         {auto ? (
@@ -169,12 +169,12 @@ export function BookingStep({ draft, onChange, onBack, onSkip, onDone }: Props) 
                 {calendar.data === undefined && !calendar.error ? (
                   <SkeletonText lines={2} />
                 ) : connected && connection ? (
-                  <div className="flex min-w-0 flex-col gap-2">
+                  <div className="flex min-w-0 flex-col gap-3">
                     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
                       <StatusPill tone="success">Koledar povezan</StatusPill>
                       <span className="min-w-0 truncate font-mono text-sm text-fg">{connection.connected_email}</span>
                     </div>
-                    {connectNote ? <p className="text-sm text-fg-muted">{connectNote}</p> : null}
+                    {connectNote ? <Notice size="sm" tone="neutral">{connectNote}</Notice> : null}
                   </div>
                 ) : (
                   <div className="flex min-w-0 flex-col items-start gap-3">
@@ -186,7 +186,6 @@ export function BookingStep({ draft, onChange, onBack, onSkip, onDone }: Props) 
                     <Button icon={CalendarPlus} loading={connect.pending} onClick={runConnect}>
                       Poveži Google Koledar
                     </Button>
-                    {connectError ? <p className="text-sm text-danger">{connectError}</p> : null}
                     {calendar.error ? <p className="text-sm text-danger">{calendar.error}</p> : null}
                   </div>
                 )}
@@ -207,50 +206,54 @@ export function BookingStep({ draft, onChange, onBack, onSkip, onDone }: Props) 
                   {WEEKDAYS.map((d) => {
                     const day = draft.hours[d.key];
                     const problem = problems.days[d.key];
+                    const state = day.open ? 'odprto' : 'zaprto';
                     return (
                       <li key={d.key} className="border-b border-border px-4 py-2.5 last:border-b-0 sm:px-5">
                         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4">
-                          <div className="flex w-20 shrink-0 items-center gap-2.5 sm:w-44 sm:gap-3">
+                          <div className="flex w-24 shrink-0 items-center gap-2.5 sm:w-52 sm:gap-3">
                             <Switch
                               checked={day.open}
                               onCheckedChange={(open) => setDay(d.key, { open })}
-                              aria-label={`${d.label}: odprto`}
+                              aria-label={`${d.label}: ${state}`}
                             />
-                            <span className="text-base font-medium text-fg">
+                            <span className={cn('text-base font-medium', day.open ? 'text-fg' : 'text-fg-muted')}>
                               <span className="sm:hidden" aria-hidden="true">
                                 {d.short}
                               </span>
                               <span className="sr-only sm:not-sr-only">{d.label}</span>
                             </span>
+                            <span className="hidden text-sm text-fg-subtle sm:inline" aria-hidden="true">
+                              {state}
+                            </span>
                           </div>
                           {day.open ? (
                             <div className="flex items-center gap-2">
-                              <Select
-                                aria-label={`${d.label}: začetek`}
-                                value={day.from || undefined}
+                              <TimeSelect
+                                aria-label={`${d.label}, začetek`}
+                                aria-invalid={problem ? true : undefined}
+                                aria-describedby={problem ? `wizard-hours-${d.key}-error` : undefined}
+                                value={day.from}
                                 onValueChange={(from) => setDay(d.key, { from })}
-                                options={timeOptions(day.from)}
-                                placeholder="--:--"
                                 className="w-[6.25rem]"
                               />
                               <span aria-hidden="true" className="text-fg-subtle">
                                 –
                               </span>
-                              <Select
-                                aria-label={`${d.label}: konec`}
-                                value={day.to || undefined}
+                              <TimeSelect
+                                aria-label={`${d.label}, konec`}
+                                aria-invalid={problem ? true : undefined}
+                                aria-describedby={problem ? `wizard-hours-${d.key}-error` : undefined}
+                                value={day.to}
                                 onValueChange={(to) => setDay(d.key, { to })}
-                                options={timeOptions(day.to)}
-                                placeholder="--:--"
                                 className="w-[6.25rem]"
                               />
                             </div>
                           ) : (
-                            <span className="text-sm text-fg-subtle">Zaprto</span>
+                            <span className="min-w-0 text-sm text-fg-subtle">Agent ta dan ne ponuja terminov.</span>
                           )}
                         </div>
                         {problem ? (
-                          <p role="alert" className="mt-1.5 text-sm text-danger">
+                          <p id={`wizard-hours-${d.key}-error`} role="alert" className="mt-1.5 text-sm text-danger">
                             {d.label}: {problem}
                           </p>
                         ) : null}
@@ -274,12 +277,6 @@ export function BookingStep({ draft, onChange, onBack, onSkip, onDone }: Props) 
               />
             </Field>
           </>
-        ) : null}
-
-        {saveError ? (
-          <Callout tone="danger" title="Shranjevanje ni uspelo.">
-            {saveError}
-          </Callout>
         ) : null}
       </div>
     </WizardStep>

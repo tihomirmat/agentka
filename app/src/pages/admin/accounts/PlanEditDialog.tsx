@@ -125,7 +125,7 @@ export function PlanEditDialog({ plan, onClose }: PlanEditDialogProps) {
         <Field label="Največ agentov" required error={shown.agents}>
           <Input inputMode="numeric" value={draft.agents} onChange={(e) => set({ agents: e.target.value })} />
         </Field>
-        <Field className="sm:col-span-2" label="Stripe price id" hint="Samo za branje.">
+        <Field className="sm:col-span-2" label="ID cene v Stripu" hint="Samo za branje.">
           <Input mono readOnly value={plan.stripe_price_id ?? ''} placeholder="Ni povezan" />
         </Field>
       </form>

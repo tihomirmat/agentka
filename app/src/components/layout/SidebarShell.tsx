@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { Menu, X, type LucideIcon } from 'lucide-react';
@@ -92,6 +92,13 @@ export function SidebarShell({
     mainRef.current?.scrollTo({ top: 0 });
   }, [pathname]);
 
+  // ... and also when a link in the drawer is clicked and the page does NOT change: the same
+  // page, or a navigation the unsaved-changes guard holds back ("Ostani"). Without this the
+  // drawer would stay open behind the question and after it.
+  const closeOnLink = (e: MouseEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest('a[href]')) setDrawerOpen(false);
+  };
+
   useEffect(() => {
     if (wide) setDrawerOpen(false);
   }, [wide]);
@@ -139,6 +146,7 @@ export function SidebarShell({
               <RadixDialog.Overlay className="fixed inset-0 z-40 bg-overlay motion-safe:animate-fade-in" />
               <RadixDialog.Content
                 aria-describedby={undefined}
+                onClick={closeOnLink}
                 className="fixed inset-y-0 left-0 z-40 w-[17rem] max-w-[85%] border-r border-border shadow-lg motion-safe:animate-slide-in-left"
               >
                 <RadixDialog.Title className="sr-only">{navLabel}</RadixDialog.Title>

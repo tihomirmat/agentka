@@ -23,7 +23,7 @@ export function PageHeader({ title, description, actions, back, meta, className 
       {back ? (
         <Link
           to={back.to}
-          className="mb-2 inline-flex items-center gap-1.5 rounded text-sm font-medium text-fg-muted transition-colors hover:text-fg"
+          className="tap mb-2 gap-1.5 rounded text-sm font-medium text-fg-muted transition-colors hover:text-fg"
         >
           <ArrowLeft size={14} aria-hidden="true" />
           {back.label}

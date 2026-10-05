@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, CircleAlert, SearchX } from 'lucide-react';
 import {
@@ -9,6 +8,8 @@ import {
   CardHeader,
   CopyValue,
   EmptyState,
+  FactList,
+  Field,
   PageHeader,
   SkeletonText,
   StatusPill,
@@ -16,35 +17,28 @@ import {
 import { TranscriptBubble } from '@/components/widget';
 import * as api from '@/data/api';
 import {
-  formatDateLong,
+  formatClockRange,
   formatDuration,
-  formatTimecode,
+  formatMinutes,
   formatRelativeDateTime,
-  formatTime,
+  formatTimecode,
+  formatWeekdayDate,
+  minutesBetween,
   plural,
 } from '@/data/format';
-import { BOOKING_STATUS, CONVERSATION_OUTCOME, EMAIL_STATUS, type StateLabel } from '@/data/labels';
+import { BOOKING_STATUS, CONVERSATION_OUTCOME, EMAIL_KIND, EMAIL_STATUS, type StateLabel } from '@/data/labels';
 import { filterConversations, readFilters } from './inbox/conversationFilters';
 import { VisitorName } from './inbox/conversationBits';
-import { formatClockRange, formatWeekdayDate, minutesBetween } from './inbox/dates';
 import { LeadStatusSelect } from './inbox/LeadStatusSelect';
 
 const SECTION = 'px-4 py-4 sm:px-5';
-const LINK = 'inline-flex items-center gap-1 rounded text-sm font-medium text-accent underline-offset-2 hover:text-accent-hover hover:underline';
+const LINK =
+  'tap inline-flex items-center gap-1 rounded text-sm font-medium text-accent underline-offset-2 hover:text-accent-hover hover:underline';
 
 /* ------------------------------------------------------------- small pieces */
 
 function Missing() {
   return <span className="text-fg-subtle">ni podatka</span>;
-}
-
-function DataRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-xs font-medium text-fg-subtle">{label}</dt>
-      <dd className="mt-0.5 min-w-0 break-words text-base text-fg">{children}</dd>
-    </div>
-  );
 }
 
 /* ------------------------------------------------------------ e-mail section */
@@ -61,7 +55,7 @@ interface MailRow {
 function mailRows(conversation: api.Conversation, log: api.EmailLog[]): MailRow[] {
   const rows: MailRow[] = log.map((e) => ({
     key: e.id,
-    who: e.kind === 'visitor_confirmation' ? 'Obiskovalcu' : e.kind === 'owner_notification' ? 'Vam' : 'Testno sporočilo',
+    who: EMAIL_KIND[e.kind],
     to: e.to,
     status: EMAIL_STATUS[e.status],
     error: e.status === 'failed' ? (e.error ?? 'Razlog ni naveden. Preverite naslov prejemnika.') : null,
@@ -72,7 +66,7 @@ function mailRows(conversation: api.Conversation, log: api.EmailLog[]): MailRow[
   if (!hasVisitorRow && conversation.visitor_email_status === 'skipped') {
     rows.push({
       key: 'visitor-skipped',
-      who: 'Obiskovalcu',
+      who: EMAIL_KIND.visitor_confirmation,
       to: null,
       status: EMAIL_STATUS.skipped,
       error: null,
@@ -138,23 +132,34 @@ function SidePanel({
         <h2 id="zbrani-podatki" className="mb-3 text-md font-semibold text-fg">
           Zbrani podatki
         </h2>
-        <dl className="flex flex-col gap-3">
-          <DataRow label="Ime">
-            {c.visitor_name ? <CopyValue value={c.visitor_name} copyLabel="Kopiraj ime" /> : <Missing />}
-          </DataRow>
-          <DataRow label="E-pošta">
-            {c.visitor_email ? <CopyValue value={c.visitor_email} copyLabel="Kopiraj e-naslov" /> : <Missing />}
-          </DataRow>
-          <DataRow label="Telefon">
-            {c.visitor_phone ? (
-              <CopyValue value={c.visitor_phone} copyLabel="Kopiraj telefonsko številko" />
-            ) : (
-              <Missing />
-            )}
-          </DataRow>
-          <DataRow label="Tema">{c.topic ? c.topic : <Missing />}</DataRow>
-          <DataRow label="Dogovorjeno">{c.agreed ? c.agreed : <Missing />}</DataRow>
-        </dl>
+        <FactList
+          columns={1}
+          className="gap-y-3"
+          items={[
+            {
+              label: 'Ime',
+              value: c.visitor_name ? <CopyValue value={c.visitor_name} copyLabel="Kopiraj ime" /> : <Missing />,
+            },
+            {
+              label: 'E-naslov',
+              value: c.visitor_email ? (
+                <CopyValue value={c.visitor_email} copyLabel="Kopiraj e-naslov" />
+              ) : (
+                <Missing />
+              ),
+            },
+            {
+              label: 'Telefon',
+              value: c.visitor_phone ? (
+                <CopyValue value={c.visitor_phone} copyLabel="Kopiraj telefonsko številko" />
+              ) : (
+                <Missing />
+              ),
+            },
+            { label: 'Tema', value: c.topic ? c.topic : <Missing /> },
+            { label: 'Dogovorjeno', value: c.agreed ? c.agreed : <Missing /> },
+          ]}
+        />
       </section>
 
       {booking && bookingStatus ? (
@@ -164,7 +169,7 @@ function SidePanel({
           </h2>
           <p className="font-medium text-fg">{formatWeekdayDate(booking.start)}</p>
           <p className="nums text-base text-fg-muted">
-            {formatClockRange(booking.start, booking.end)} · {minutesBetween(booking.start, booking.end)} min
+            {formatClockRange(booking.start, booking.end)} · {formatMinutes(minutesBetween(booking.start, booking.end))}
           </p>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <StatusPill tone={bookingStatus.tone}>{bookingStatus.label}</StatusPill>
@@ -184,7 +189,15 @@ function SidePanel({
           <h2 id="kontakt" className="mb-3 text-md font-semibold text-fg">
             Kontakt
           </h2>
-          <LeadStatusSelect lead={lead} size="md" className="w-full" />
+          <div className="flex flex-col gap-2">
+            <Field label="Stanje kontakta">
+              <LeadStatusSelect lead={lead} size="md" className="w-full" />
+            </Field>
+            <Link to="/app/kontakti" className={`${LINK} self-start`}>
+              Odpri kontakte
+              <ArrowRight size={14} aria-hidden="true" />
+            </Link>
+          </div>
         </section>
       ) : null}
 
@@ -295,7 +308,7 @@ export default function ConversationDetail() {
         meta={<StatusPill tone={outcome.tone}>{outcome.label}</StatusPill>}
         description={
           <span className="nums">
-            {formatDateLong(c.started_at)} ob {formatTime(c.started_at)} · trajanje {formatDuration(c.duration_sec)}
+            {formatRelativeDateTime(c.started_at)} · trajanje {formatDuration(c.duration_sec)}
           </span>
         }
         actions={
@@ -305,28 +318,27 @@ export default function ConversationDetail() {
                 {position + 1} od {ordered.length}
               </span>
               {newer ? (
-                <ButtonLink
-                  to={to(newer)}
+                <ButtonLink to={to(newer)} size="sm" variant="secondary" icon={ChevronLeft} aria-label="Novejši pogovor">
+                  Novejši
+                </ButtonLink>
+              ) : (
+                <Button
                   size="sm"
                   variant="secondary"
                   icon={ChevronLeft}
-                  aria-label="Prejšnji pogovor (novejši)"
+                  disabledReason="To je najnovejši pogovor na seznamu."
                 >
-                  Prejšnji
-                </ButtonLink>
-              ) : (
-                <Button size="sm" variant="secondary" icon={ChevronLeft} disabled aria-label="Prejšnji pogovor (ni novejšega)">
-                  Prejšnji
+                  Novejši
                 </Button>
               )}
               {older ? (
-                <ButtonLink to={to(older)} size="sm" variant="secondary" aria-label="Naslednji pogovor (starejši)">
-                  Naslednji
+                <ButtonLink to={to(older)} size="sm" variant="secondary" aria-label="Starejši pogovor">
+                  Starejši
                   <ChevronRight size={14} aria-hidden="true" />
                 </ButtonLink>
               ) : (
-                <Button size="sm" variant="secondary" disabled aria-label="Naslednji pogovor (ni starejšega)">
-                  Naslednji
+                <Button size="sm" variant="secondary" disabledReason="To je najstarejši pogovor na seznamu.">
+                  Starejši
                   <ChevronRight size={14} aria-hidden="true" />
                 </Button>
               )}

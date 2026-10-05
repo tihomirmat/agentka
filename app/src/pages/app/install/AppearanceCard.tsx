@@ -1,7 +1,7 @@
-import { Check } from 'lucide-react';
+import { ArrowDownLeft, ArrowDownRight, type LucideIcon } from 'lucide-react';
 import { WIDGET_COLORS } from '@/data/api';
 import type { Agent, WidgetPosition } from '@/data/types';
-import { Card, CardBody, CardHeader, SwitchRow } from '@/components/ui';
+import { Card, CardBody, CardHeader, ChoiceCard, SwitchRow } from '@/components/ui';
 import { AgentWidget } from '@/components/widget';
 import { cn } from '@/lib/cn';
 
@@ -10,13 +10,10 @@ interface AppearanceCardProps {
   onPatch: (changes: Partial<Agent>) => void;
 }
 
-const POSITIONS: { value: WidgetPosition; label: string }[] = [
-  { value: 'bottom-right', label: 'Spodaj desno' },
-  { value: 'bottom-left', label: 'Spodaj levo' },
+const POSITIONS: { value: WidgetPosition; label: string; icon: LucideIcon }[] = [
+  { value: 'bottom-right', label: 'Spodaj desno', icon: ArrowDownRight },
+  { value: 'bottom-left', label: 'Spodaj levo', icon: ArrowDownLeft },
 ];
-
-const TILE_FOCUS =
-  'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring';
 
 /** "Videz pripomočka": colour, text field and position, with the shared widget reflecting them live. */
 export function AppearanceCard({ agent, onPatch }: AppearanceCardProps) {
@@ -29,52 +26,37 @@ export function AppearanceCard({ agent, onPatch }: AppearanceCardProps) {
     <Card>
       <CardHeader
         title="Videz pripomočka"
-        description="Tako pripomoček izgleda obiskovalcem na vaši spletni strani."
+        description="Tako je pripomoček videti obiskovalcem vaše spletne strani."
       />
       <CardBody className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_26rem]">
         <div className="flex min-w-0 flex-col gap-6">
           <fieldset className="min-w-0">
             <legend className="text-sm font-medium text-fg">Barva</legend>
-            <div className="mt-2 grid min-w-0 grid-cols-2 gap-2 xl:grid-cols-3">
-              {colors.map((c) => {
-                const selected = c.hex.toLowerCase() === current.toLowerCase();
-                return (
-                  <label key={c.key} className="relative flex min-w-0 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="barva-pripomocka"
-                      className="peer sr-only"
-                      checked={selected}
-                      onChange={() => onPatch({ widget_accent_color: c.hex })}
-                    />
+            <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2">
+              {colors.map((c) => (
+                <ChoiceCard
+                  key={c.key}
+                  name="barva-pripomocka"
+                  value={c.key}
+                  checked={c.hex.toLowerCase() === current.toLowerCase()}
+                  onSelect={() => onPatch({ widget_accent_color: c.hex })}
+                  title={c.name}
+                  className="p-3"
+                  aside={
+                    /*
+                      The one allowed colour value in a screen: the swatch paints the customer's own
+                      widget colour from data (WIDGET_COLORS, agent.widget_accent_color). It is not a
+                      colour of our interface, so it cannot be a design token. The ring is the strong
+                      border, so a dark swatch stays visible on a dark card.
+                    */
                     <span
-                      className={cn(
-                        'flex w-full min-w-0 items-center gap-2.5 rounded-lg border px-2.5 py-2.5 transition-colors duration-100 sm:gap-3 sm:px-3',
-                        TILE_FOCUS,
-                        selected ? 'border-accent bg-accent-soft' : 'border-border-strong bg-surface hover:bg-surface-2',
-                      )}
-                    >
-                      {/*
-                        The one allowed colour value in a screen: the swatch paints the customer's own
-                        widget colour from data (WIDGET_COLORS, agent.widget_accent_color). It is not a
-                        colour of our interface, so it cannot be a design token.
-                      */}
-                      <span
-                        aria-hidden="true"
-                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-widget-fg"
-                        style={{ background: c.hex }}
-                      >
-                        {selected ? <Check size={16} aria-hidden="true" /> : null}
-                      </span>
-                      <span
-                        className={cn('min-w-0 text-sm sm:text-base', selected ? 'font-medium text-accent-soft-fg' : 'text-fg')}
-                      >
-                        {c.name}
-                      </span>
-                    </span>
-                  </label>
-                );
-              })}
+                      aria-hidden="true"
+                      className="inline-block h-5 w-5 shrink-0 rounded-full border border-border-strong"
+                      style={{ background: c.hex }}
+                    />
+                  }
+                />
+              ))}
             </div>
           </fieldset>
 
@@ -87,43 +69,19 @@ export function AppearanceCard({ agent, onPatch }: AppearanceCardProps) {
 
           <fieldset className="min-w-0">
             <legend className="text-sm font-medium text-fg">Položaj na strani</legend>
-            <div className="mt-2 grid min-w-0 grid-cols-2 gap-2">
-              {POSITIONS.map((p) => {
-                const selected = agent.widget_position === p.value;
-                return (
-                  <label key={p.value} className="relative flex min-w-0 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="polozaj-pripomocka"
-                      className="peer sr-only"
-                      checked={selected}
-                      onChange={() => onPatch({ widget_position: p.value })}
-                    />
-                    <span
-                      className={cn(
-                        'flex w-full min-w-0 flex-col gap-2 rounded-lg border p-3 transition-colors duration-100',
-                        TILE_FOCUS,
-                        selected ? 'border-accent bg-accent-soft' : 'border-border-strong bg-surface hover:bg-surface-2',
-                      )}
-                    >
-                      <span aria-hidden="true" className="relative block h-12 w-full rounded border border-border bg-surface">
-                        <span
-                          className={cn(
-                            'absolute bottom-1.5 h-5 w-4 rounded-sm',
-                            p.value === 'bottom-right' ? 'right-1.5' : 'left-1.5',
-                            selected ? 'bg-accent' : 'bg-fg-subtle',
-                          )}
-                        />
-                      </span>
-                      <span
-                        className={cn('text-base', selected ? 'font-medium text-accent-soft-fg' : 'text-fg')}
-                      >
-                        {p.label}
-                      </span>
-                    </span>
-                  </label>
-                );
-              })}
+            <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 min-[480px]:grid-cols-2">
+              {POSITIONS.map((p) => (
+                <ChoiceCard
+                  key={p.value}
+                  name="polozaj-pripomocka"
+                  value={p.value}
+                  checked={agent.widget_position === p.value}
+                  onSelect={() => onPatch({ widget_position: p.value })}
+                  icon={p.icon}
+                  title={p.label}
+                  className="p-3"
+                />
+              ))}
             </div>
           </fieldset>
         </div>
@@ -139,6 +97,7 @@ export function AppearanceCard({ agent, onPatch }: AppearanceCardProps) {
             <AgentWidget
               agentName={agent.name}
               businessName={agent.business_name}
+              voiceId={agent.voice_id}
               firstMessage={agent.first_message}
               textInput={agent.widget_text_input}
               accentHex={agent.widget_accent_color}
@@ -146,8 +105,8 @@ export function AppearanceCard({ agent, onPatch }: AppearanceCardProps) {
             />
           </div>
           <p className="mt-2 text-sm text-fg-subtle">
-            Predogled prikazuje barvo, polje za vpis in položaj. Kako izgleda zaprt pripomoček ter kakšna sta njegova
-            velikost in pisava na vaši strani, ne prikaže.
+            Predogled prikazuje barvo, polje za vpis in položaj. Ne prikaže pa zaprtega pripomočka ter njegove velikosti in
+            pisave na vaši strani.
           </p>
         </div>
       </CardBody>

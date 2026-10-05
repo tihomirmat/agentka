@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
 import { BRAND } from '../brand';
 import { formatNumber } from './format';
-import { LEAD_STATUS, PAUSED_BY } from './labels';
+import { LEAD_STATUS, PAUSED_BY, PAUSED_BY_ADMIN } from './labels';
 import {
   assistantNoun,
   DEFAULT_OWNER_TEMPLATE,
@@ -23,6 +23,7 @@ import {
   createEmptyAccountBundle,
   createSampleDb,
   defaultFirstMessage,
+  defaultInstructions,
   DEMO_SALON,
   LOGGED_OUT_SESSION,
   planByKey,
@@ -523,6 +524,16 @@ export function updateAgent(patch: AgentPatch): Promise<Agent> {
       if (status === 'paused') pauseNow();
       else if (status === 'active') switchOnNow();
       else throw new ApiError('invalid', 'Tega stanja agenta ni mogoče nastaviti ročno.');
+    }
+    // Instructions that are still the generated ones follow the voice ("Ste AI pomočnik" /
+    // "AI pomočnica"), like the greeting does; instructions the person wrote are left alone.
+    if (
+      clean.voice_id !== undefined &&
+      clean.voice_id !== agent.voice_id &&
+      clean.instructions === undefined &&
+      agent.instructions === defaultInstructions(agent.business_name, agent.voice_id)
+    ) {
+      clean.instructions = defaultInstructions(clean.business_name ?? agent.business_name, clean.voice_id);
     }
     patchAgent(accountId, clean);
     return scope().agent;
@@ -1515,6 +1526,7 @@ function adminRow(db: Db, account: Account): AdminAccountRow {
     plan: planByKey(db.plans, account.plan_key),
     agent_status: agent?.status ?? 'draft',
     agent_paused_by: agent?.paused_by ?? null,
+    agent_pause_reasons: PAUSE_PRIORITY.filter((r) => agent?.pause_reasons.includes(r)),
     owner_name: owner?.name ?? '',
     owner_email: owner?.email ?? '',
     estimated_cost_eur: Math.round(account.minutes_used * SAMPLE_COST_PER_MINUTE_EUR * 100) / 100,
@@ -1593,7 +1605,7 @@ export function adminSetPaused(id: Id, paused: boolean): Promise<ActionResult> {
       );
     }
     if (!agent.pause_reasons.includes('admin')) {
-      const why = agent.paused_by ? ` ${PAUSED_BY[agent.paused_by].label}.` : '';
+      const why = agent.paused_by ? ` ${PAUSED_BY_ADMIN[agent.paused_by].label}.` : '';
       throw new ApiError(
         'invalid',
         `Tega agenta ni ustavil skrbnik, zato ga tukaj ni mogoče vklopiti.${why}`,
@@ -1603,7 +1615,7 @@ export function adminSetPaused(id: Id, paused: boolean): Promise<ActionResult> {
     const after = getState().agents.find((a) => a.account_id === id);
     if (after?.status === 'paused' && after.paused_by) {
       return simulated(
-        `Predogled: skrbniška ustavitev je odstranjena, agent pa ostaja ustavljen. ${PAUSED_BY[after.paused_by].label}.`,
+        `Predogled: skrbniška ustavitev je odstranjena, agent pa ostaja ustavljen. ${PAUSED_BY_ADMIN[after.paused_by].label}.`,
       );
     }
     return simulated(

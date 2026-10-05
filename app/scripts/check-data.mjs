@@ -34,6 +34,7 @@ await build({
       export * as api from './src/data/api.ts';
       export * as format from './src/data/format.ts';
       export * as labels from './src/data/labels.ts';
+      export * as copy from './src/lib/useCopy.ts';
       export { getState, setState } from './src/data/store.ts';
     `,
     resolveDir: resolve('.'),
@@ -46,7 +47,7 @@ await build({
   external: ['react'],
   logLevel: 'silent',
 });
-const { api, format, labels, getState, setState } = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
+const { api, format, labels, copy, getState, setState } = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`);
 
 let failed = 0;
 let passed = 0;
@@ -207,6 +208,31 @@ await api.login('kdorkoli@example.si', 'predogled-123');
   await api.updateAgent({ status: 'active' });
   agent = await api.getAgent();
   check('pause: updateAgent({status}) is the customer switch', legacyPaused && agent.status === 'active');
+
+  // The admin must see EVERY pause in force, not only the weightiest: a failed payment outranks
+  // the admin's own pause, but both are listed on the row and on the detail.
+  const reasonsOf = async () => {
+    const row = (await api.adminListAccounts()).find((r) => r.account.id === VIDMAR);
+    const detail = await api.adminGetAccount(VIDMAR);
+    const raw = getState().agents.find((a) => a.account_id === VIDMAR).pause_reasons;
+    return { row: row.agent_pause_reasons, detail: detail.agent_pause_reasons, main: detail.agent_paused_by, raw };
+  };
+  const alone = await reasonsOf();
+  await api.adminSetPaused(VIDMAR, true);
+  const both = await reasonsOf();
+  await api.adminSetPaused(VIDMAR, false);
+  const again = await reasonsOf();
+  check(
+    'admin: row and detail list every pause in force — payment + admin together, weightiest first, main reason still "payment"',
+    JSON.stringify(alone.row) === '["payment"]' &&
+      JSON.stringify(both.row) === '["payment","admin"]' &&
+      JSON.stringify(both.detail) === '["payment","admin"]' &&
+      both.main === 'payment' &&
+      [...both.raw].sort().join() === [...both.row].sort().join() &&
+      JSON.stringify(again.row) === '["payment"]' &&
+      JSON.stringify(again.detail) === '["payment"]',
+    JSON.stringify({ alone, both, again }),
+  );
 }
 
 /* -------------------------------------------- in-app preview replies (R2) */
@@ -243,7 +269,7 @@ await api.logout();
   const all = [p, h, w, s1, s2, s3, u].map((r) => r.text).filter((t) => /(vašega cenika|viri znanja|virih znanja)/i.test(t));
   check('demo: no reply speaks to the owner', all.length === 0, all.join(' | '));
   const terms = await api.getTrialTerms();
-  check(`trial (R7): terms are readable logged out → "${format.formatTrialTerms(terms)}"`, terms.days === 14 && terms.minutes === 30 && format.formatTrialTerms(terms) === '14 dni in 30 minut pogovorov');
+  check(`trial (R7): terms are readable logged out → "${format.formatTrialTerms(terms)}"`, terms.days === 14 && terms.minutes === 30 && format.formatTrialTerms(terms) === '14\u00a0dni in 30\u00a0minut pogovorov');
   check('preview reply does not need a login either', (await api.previewAgentReply('Koliko stane?')).text.length > 0);
 }
 
@@ -258,6 +284,16 @@ await api.logout();
   check('register (R27): one call saves owner name, business, website and domain', session.userName === 'Zala Kralj' && team[0].name === 'Zala Kralj' && account.name === 'Frizerski studio Zala' && account.website_url === 'https://studio-zala.si' && agent.allowed_domain === 'studio-zala.si', JSON.stringify({ session, url: account.website_url, domain: agent.allowed_domain }));
   check('new agent is a draft with a correct greeting', agent.status === 'draft' && agent.first_message === 'Pozdravljeni, sem Jan, AI pomočnik podjetja Frizerski studio Zala. Kako vam lahko pomagam?', agent.first_message);
   check('greeting helper (S16): a female voice makes it "AI pomočnica"', api.defaultFirstMessage('Tina', 'Studio Zala', 'voice_sl_tina') === 'Pozdravljeni, sem Tina, AI pomočnica podjetja Studio Zala. Kako vam lahko pomagam?');
+
+  // The default instructions say "AI pomočnik" / "AI pomočnica" by the voice, like the greeting;
+  // instructions the person wrote are left alone.
+  check('instructions: a new agent starts with "Ste AI pomočnik podjetja …"', agent.instructions.startsWith('Ste AI pomočnik podjetja Frizerski studio Zala.'), agent.instructions.split('\n')[0]);
+  await api.updateAgent({ voice_id: 'voice_sl_tina' });
+  const femaleInstructions = (await api.getAgent()).instructions.split('\n')[0];
+  await api.updateAgent({ instructions: 'Moja navodila.' });
+  await api.updateAgent({ voice_id: 'voice_sl_jan' });
+  const written = (await api.getAgent()).instructions;
+  check('instructions: a female voice turns the generated text into "Ste AI pomočnica …"; a hand-written text is left alone', femaleInstructions === 'Ste AI pomočnica podjetja Frizerski studio Zala.' && written === 'Moja navodila.', `${femaleInstructions} | ${written}`);
 
   let ready = await api.getAgentReadiness();
   check('readiness (R3): without sources the agent cannot be activated', ready.canActivate === false && ready.missing.length === 1 && ready.missing[0].key === 'sources' && ready.missing[0].action.to === '/app/viri');
@@ -348,12 +384,37 @@ await api.logout();
   const want = ['danes ob 10:12', 'včeraj ob 15:40', 'sob., 3. okt. ob 13:22', 'jutri ob 09:05', 'sre., 7. okt. ob 14:00', 'sre., 31. dec. 2025 ob 08:00'];
   check('dates (R17): danes · včeraj · jutri · weekday + date, 24-hour time', JSON.stringify(got) === JSON.stringify(want), got.join(' | '));
   check('dates: no "predvčerajšnjim" / "pojutrišnjem" anywhere', ![-2, 2].some((d) => /predvčeraj|pojutri/.test(format.formatRelativeDay(at(5 + d, 9, 0), now))));
-  check('duration (R16): "8 min 18 s", never "08:18"', format.formatDuration(498) === '8 min 18 s' && format.formatDuration(45) === '45 s' && format.formatDuration(480) === '8 min' && format.formatTimecode(84) === '01:24');
-  check('days left (S18): one set of forms', [1, 2, 3, 5].map((n) => format.formatDaysLeft(n)).join(', ') === 'še 1 dan, še 2 dneva, še 3 dnevi, še 5 dni');
+  check('duration (R16): "8 min 18 s", never "08:18"', format.formatDuration(498) === '8\u00a0min 18\u00a0s' && format.formatDuration(45) === '45\u00a0s' && format.formatDuration(480) === '8\u00a0min' && format.formatTimecode(84) === '01:24');
+  check('days left (S18): one set of forms', [1, 2, 3, 5].map((n) => format.formatDaysLeft(n)).join(', ') === 'še 1\u00a0dan, še 2\u00a0dneva, še 3\u00a0dnevi, še 5\u00a0dni');
   check('time select helpers: 24-hour clock strings', format.minutesToClock(16 * 60) === '16:00' && format.clockToMinutes('08:30') === 510);
   check('labels: every agent state has its explanation; trial has one name', ['draft', 'active', 'paused', 'error'].every((s) => labels.AGENT_STATUS_HELP[s].length > 20) && labels.TRIAL.name === 'Brezplačni preizkus' && labels.ACCOUNT_STATUS.trial.label === 'Preizkus');
   check('labels (R21): owner e-mail is "Obvestilo vam" in the app, "Obvestilo podjetju" on public pages', labels.EMAIL_KIND.owner_notification === 'Obvestilo vam' && labels.EMAIL_KIND_PUBLIC.owner_notification === 'Obvestilo podjetju');
   check('labels: all four pause reasons are explained', ['customer', 'admin', 'limit', 'payment'].every((r) => labels.PAUSED_BY[r].help.length > 20));
+
+  // A figure and its unit never break across lines: every helper joins them with U+00A0.
+  const NB = '\u00a0';
+  const joinedOutputs = [format.formatMinutes(300), format.formatMinutesOf(86, 300), format.formatEur(59), format.formatEur(12.5), format.formatEurExact(59), format.formatPercent(0.29), format.formatDuration(498), format.formatDaysLeft(3), format.plural(5, ['pogovor', 'pogovora', 'pogovori', 'pogovorov'])];
+  check(
+    `no-break space: "300 min", "86 / 300 min", "59 €", "29 %", "3 dnevi" never break after the figure (${joinedOutputs.map((t) => JSON.stringify(t)).join(', ')})`,
+    format.formatMinutes(300) === `300${NB}min` && format.formatMinutesOf(86, 300) === `86${NB}/${NB}300${NB}min` && format.formatEur(59) === `59${NB}€` && format.formatPercent(0.29) === `29${NB}%` && joinedOutputs.every((t) => !/[0-9] /.test(t)),
+  );
+  check('no-break space control: the scanner flags "300 min" with an ordinary space', /[0-9] /.test('300 min') && !/[0-9] /.test(`300${NB}min`));
+
+  check('labels: the last read of the pages is "Zadnje branje … še ni bilo opravljeno"; "sinhronizacija" is shown nowhere', labels.SYNC_WORDS.lastLabel === 'Zadnje branje' && labels.SYNC_WORDS.never === 'še ni bilo opravljeno' && !/sinhroniz/i.test(JSON.stringify(labels)));
+  check(
+    'labels: the admin variants speak about "agent tega uporabniškega računa" (no "vaš", no "ste"); Nastavitve does not send the owner "v Nastavitvah"',
+    ['draft', 'active', 'paused', 'error'].every((st) => /^Agent(a)? tega uporabniškega računa/.test(labels.AGENT_STATUS_HELP_ADMIN[st])) &&
+      ['customer', 'admin', 'limit', 'payment'].every((r) => !/(\bvaš|\bste\b|\bvklopite\b)/i.test(labels.PAUSED_BY_ADMIN[r].label + ' ' + labels.PAUSED_BY_ADMIN[r].help)) &&
+      /v Nastavitvah/.test(labels.pausedByHelp('customer')) &&
+      !/Nastavitv/.test(labels.pausedByHelp('customer', 'settings')),
+  );
+  check(
+    'copy: the fallback sentence takes the noun\'s form — "Kodo … jo", "Besedilo … ga", "Sporočilo … ga"; the old string call still works',
+    copy.copyFallbackSentence({ object: 'Kodo', pronoun: 'jo' }) === 'Kodo ste označili. Kopirajte jo s Ctrl+C (na Macu Cmd+C).' &&
+      copy.copyFallbackSentence({ object: 'Besedilo', pronoun: 'ga' }) === 'Besedilo ste označili. Kopirajte ga s Ctrl+C (na Macu Cmd+C).' &&
+      copy.copyFallbackSentence({ object: 'Sporočilo', pronoun: 'ga' }) === 'Sporočilo ste označili. Kopirajte ga s Ctrl+C (na Macu Cmd+C).' &&
+      copy.copyFallbackSentence('Kodo') === 'Kodo ste označili. Kopirajte jo s Ctrl+C (na Macu Cmd+C).',
+  );
 }
 
 console.log(`\n${passed} passed, ${failed} failed.`);

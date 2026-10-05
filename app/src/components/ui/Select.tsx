@@ -21,6 +21,14 @@ export interface SelectProps<V extends string = string> {
   id?: string;
   /** needed only when the select is not inside a <Field> */
   'aria-label'?: string;
+  /**
+   * Marks the select as wrong: it gets the same danger border as an <Input>. Inside <Field
+   * error="…"> this happens by itself; pass it only where the message is written next to the
+   * control without a Field (a row of working hours).
+   */
+  'aria-invalid'?: boolean | 'true' | 'false';
+  /** id of the element that says what is wrong (the message next to the control) */
+  'aria-describedby'?: string;
   size?: 'sm' | 'md';
   /** class of the trigger (width etc.) */
   className?: string;

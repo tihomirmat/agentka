@@ -98,18 +98,18 @@ export function spokenDay(day: Date, daysFromNow: number): string {
   return `${weekday}, ${day.getDate()}. ${MONTH_GENITIVE[day.getMonth()] ?? ''}`;
 }
 
-/** "9.00", "9.30", "14.45" */
+/** "9:00", "9:30", "14:45" */
 export function spokenTime(d: Date): string {
-  return `${d.getHours()}.${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-/** "9.00", "9.00 ali 9.30", "9.00, 9.30 ali 10.00" */
+/** "9:00", "9:00 ali 9:30", "9:00, 9:30 ali 10:00" */
 export function spokenList(times: string[]): string {
   if (times.length <= 1) return times[0] ?? '';
   return `${times.slice(0, -1).join(', ')} ali ${times[times.length - 1]}`;
 }
 
-/** The sentence the agent says: "Prosti termini so v torek ob 9.00, 9.30 ali 10.00." */
+/** The sentence the agent says: "Prosti termini so v torek ob 9:00, 9:30 ali 10:00." */
 export function offerSentence(preview: SlotPreview): string {
   const n = preview.slots.length;
   const lead = n === 1 ? 'Prost termin je' : n === 2 ? 'Prosta termina sta' : 'Prosti termini so';

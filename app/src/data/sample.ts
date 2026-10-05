@@ -205,8 +205,9 @@ Dogovorjeno: {{dogovorjeno}}
 
 Celoten prepis pogovora: {{povezava}}`;
 
-export function defaultInstructions(businessName: string): string {
-  return `Ste AI pomočnik podjetja ${businessName}.
+/** The instructions a new agent starts with. "Ste AI pomočnik(ca)" follows the voice, like the greeting. */
+export function defaultInstructions(businessName: string, voiceId: string): string {
+  return `Ste ${assistantNoun(voiceId)} podjetja ${businessName}.
 
 - Obiskovalce vikajte. Odgovarjajte v enem ali dveh kratkih stavkih in postavite eno vprašanje naenkrat.
 - Odgovarjajte samo iz virov znanja. Če podatka ni, to povejte in ponudite povratni klic.
@@ -922,7 +923,7 @@ function buildSpletnost(now: Date) {
     voice_id: 'voice_sl_jan',
     language: 'sl',
     first_message: HELLO,
-    instructions: defaultInstructions('Spletnost'),
+    instructions: defaultInstructions('Spletnost', 'voice_sl_jan'),
     status: 'active',
     paused_by: null,
     pause_reasons: [],
@@ -1231,7 +1232,7 @@ function buildOtherAccounts(now: Date) {
       language: 'sl',
       first_message:
         'Pozdravljeni, sem Tina, AI pomočnica Frizerskega salona Lana. Kako vam lahko pomagam?',
-      instructions: defaultInstructions('Frizerski salon Lana'),
+      instructions: defaultInstructions('Frizerski salon Lana', 'voice_sl_tina'),
       status: 'active',
       paused_by: null,
       pause_reasons: [],
@@ -1360,7 +1361,7 @@ function buildOtherAccounts(now: Date) {
       language: 'sl',
       first_message:
         'Pozdravljeni, sem Ana, AI pomočnica Zobne ordinacije Vidmar. Kako vam lahko pomagam?',
-      instructions: defaultInstructions('Zobna ordinacija Vidmar'),
+      instructions: defaultInstructions('Zobna ordinacija Vidmar', 'voice_sl_ana'),
       status: 'paused',
       paused_by: 'payment',
       pause_reasons: ['payment'],
@@ -1606,7 +1607,7 @@ export function createEmptyAccountBundle(
     voice_id: 'voice_sl_jan',
     language: 'sl',
     first_message: defaultFirstMessage('Jan', input.businessName, 'voice_sl_jan'),
-    instructions: defaultInstructions(input.businessName),
+    instructions: defaultInstructions(input.businessName, 'voice_sl_jan'),
     status: 'draft',
     paused_by: null,
     pause_reasons: [],

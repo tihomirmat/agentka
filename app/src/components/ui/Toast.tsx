@@ -84,9 +84,13 @@ const ICONS = { success: CircleCheck, error: CircleAlert, info: Info };
 const ICON_TONE = { success: 'text-success', error: 'text-danger', info: 'text-info' };
 
 /**
- * Rendered once, in App.tsx. The toasts sit at the TOP of the window, under the top bar:
- * top-right on a wide screen, top-centre on a phone. Never at the bottom — that is where
- * the save bar, the footers of forms and dialogs and the widget's text field are.
+ * Rendered once, in App.tsx. Where the toasts sit:
+ *  - wide screen: BOTTOM-right, so a toast never covers the buttons in a page header (the
+ *    actions of a page are at its top). When a <SaveBar> is on screen it publishes the room it
+ *    takes as the CSS variable `--toast-lift` (px from the window's bottom edge), and the
+ *    toasts stack above it — they never cover the bar or the buttons in it;
+ *  - phone: top-centre, under the top bar (the bottom of a phone is the save bar, the footers
+ *    of forms and dialogs, the keyboard and the widget's text field).
  */
 export function Toaster() {
   const list = useSyncExternalStore(
@@ -100,7 +104,7 @@ export function Toaster() {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 top-[calc(4.5rem+env(safe-area-inset-top,0px))] z-[80] flex flex-col items-center gap-2 px-4 sm:items-end sm:px-6"
+      className="pointer-events-none fixed inset-x-0 top-[calc(4.5rem+env(safe-area-inset-top,0px))] z-[80] flex flex-col items-center gap-2 px-4 sm:bottom-[calc(max(1rem,var(--toast-lift,0px))+env(safe-area-inset-bottom,0px))] sm:top-auto sm:items-end sm:px-6"
       aria-live="polite"
       aria-relevant="additions"
     >

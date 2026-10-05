@@ -9,12 +9,12 @@ import {
   ConfirmDialog,
   Field,
   Input,
+  Notice,
   ProgressBar,
   Select,
   useToast,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { ResultNote } from '../screen-kit/ResultNote';
 import { everyDays, SYNC_CHOICES } from './helpers';
 import { PagesCard } from './PagesCard';
 
@@ -31,7 +31,7 @@ function withoutProtocol(url: string): string {
   return url.replace(/^https?:\/\//i, '');
 }
 
-/** "Spletna stran" tab: address and import, automatic sync, and the table of pages. */
+/** "Spletne strani" tab: address, the two ways to fill the list, automatic re-reading, and the pages. */
 export function WebsiteTab({ pages, loading, error, reload, agent, account }: WebsiteTabProps) {
   const toast = useToast();
   const urlRef = useRef<HTMLInputElement>(null);
@@ -41,26 +41,17 @@ export function WebsiteTab({ pages, loading, error, reload, agent, account }: We
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [confirmImport, setConfirmImport] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  // The api's own sentence for the last import or re-read: ONE inline notice, never a toast as well.
   const [result, setResult] = useState<api.ActionResult | null>(null);
   const [autoDays, setAutoDays] = useState<number | null>(null);
 
-  const importPages = api.useAction(api.importWebsite, {
-    onError: (m) => {
-      setUrlError(m);
-      toast.error(m);
-    },
-  });
-  const syncPages = api.useAction(api.syncWebsite, {
-    onError: (m) => {
-      setActionError(m);
-      toast.error(m);
-    },
-  });
+  // An import that is refused is about the address: the message belongs to the field.
+  const importPages = api.useAction(api.importWebsite, { onError: (m) => setUrlError(m) });
+  const readAgain = api.useAction(api.syncWebsite, { onError: toast.error });
   const saveAgent = api.useAction(api.updateAgent, { onError: toast.error });
 
   const url = urlDraft ?? withoutProtocol(account?.website_url ?? '');
-  const busy = importPages.pending || syncPages.pending;
+  const busy = importPages.pending || readAgain.pending;
   const hasPages = pages.length > 0;
 
   const included = pages.filter((p) => p.included);
@@ -69,7 +60,6 @@ export function WebsiteTab({ pages, loading, error, reload, agent, account }: We
 
   async function runImport() {
     setResult(null);
-    setActionError(null);
     if (!url.trim()) {
       setUrlError('Vpišite naslov spletne strani, na primer vasepodjetje.si');
       urlRef.current?.focus();
@@ -80,27 +70,20 @@ export function WebsiteTab({ pages, loading, error, reload, agent, account }: We
     if (r) {
       setResult(r);
       setUrlDraft(null);
-      if (r.simulated) toast.info(r.message);
-      else toast.success(r.message);
     }
   }
 
-  async function runSync() {
+  async function runReadAgain() {
     setResult(null);
-    setActionError(null);
-    const r = await syncPages.run();
-    if (r) {
-      setResult(r);
-      if (r.simulated) toast.info(r.message);
-      else toast.success(r.message);
-    }
+    const r = await readAgain.run();
+    if (r) setResult(r);
   }
 
   async function changeAutoDays(days: number) {
     setAutoDays(days);
     const saved = await saveAgent.run({ auto_sync_days: days });
     setAutoDays(null);
-    if (saved) toast.success(`Strani se samodejno znova preberejo ${everyDays(days)}.`);
+    if (saved) toast.success(`Strani se bodo samodejno znova prebrale ${everyDays(days)}.`);
   }
 
   const currentDays = autoDays ?? agent?.auto_sync_days ?? 7;
@@ -115,7 +98,7 @@ export function WebsiteTab({ pages, loading, error, reload, agent, account }: We
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader
-          title="Naslov spletne strani"
+          title="Vaša spletna stran"
           description="Agent prebere besedilo strani z vašega naslova in iz njega odgovarja obiskovalcem."
         />
         <CardBody className="flex flex-col gap-4">
@@ -178,33 +161,47 @@ export function WebsiteTab({ pages, loading, error, reload, agent, account }: We
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant={hasPages ? 'secondary' : 'primary'}
-              icon={Download}
-              loading={importPages.pending}
-              disabled={syncPages.pending}
-              onClick={() => (hasPages ? setConfirmImport(true) : void runImport())}
-            >
-              Uvozi stran
-            </Button>
-            <Button
-              variant={hasPages ? 'primary' : 'secondary'}
-              icon={RefreshCw}
-              loading={syncPages.pending}
-              disabled={importPages.pending}
-              onClick={() => void runSync()}
-            >
-              Sinhroniziraj zdaj
-            </Button>
+          {/* Two actions that look alike but do different things: each says what it does under its button. */}
+          <div className="grid min-w-0 gap-4 sm:grid-cols-2 sm:gap-6">
+            <div className="flex min-w-0 flex-col items-start gap-1.5">
+              <Button
+                variant={hasPages ? 'secondary' : 'primary'}
+                icon={Download}
+                loading={importPages.pending}
+                disabled={readAgain.pending}
+                onClick={() => (hasPages ? setConfirmImport(true) : void runImport())}
+              >
+                Uvozi stran
+              </Button>
+              <p className="text-sm text-fg-subtle">
+                Poišče nove strani na vašem naslovu in sestavi nov seznam. Vaše izbire vključenih in izključenih strani
+                se ponastavijo.
+              </p>
+            </div>
+            <div className="flex min-w-0 flex-col items-start gap-1.5">
+              <Button
+                variant={hasPages ? 'primary' : 'secondary'}
+                icon={RefreshCw}
+                loading={readAgain.pending}
+                disabled={importPages.pending}
+                onClick={() => void runReadAgain()}
+              >
+                Preberi strani znova
+              </Button>
+              <p className="text-sm text-fg-subtle">
+                Znova prebere strani s seznama, ki so vključene, da agent pozna zadnje spremembe. Vaše izbire ostanejo.
+              </p>
+            </div>
           </div>
 
           {busy ? (
-            <div role="status" aria-live="polite" className="rounded-lg bg-surface-2 px-4 py-3">
-              <p className="text-sm font-medium text-fg">
-                {importPages.pending ? 'Uvoz poteka' : 'Sinhronizacija poteka'}
-                {pending > 0 ? `: obdelanih ${done} od ${included.length}` : ''}
-              </p>
+            <Notice
+              size="sm"
+              tone="neutral"
+              title={`${importPages.pending ? 'Uvoz poteka' : 'Branje strani poteka'}${
+                pending > 0 ? `: obdelanih ${done} od ${included.length}` : ''
+              }`}
+            >
               {pending > 0 ? (
                 <ProgressBar
                   className="mt-2"
@@ -215,17 +212,19 @@ export function WebsiteTab({ pages, loading, error, reload, agent, account }: We
                   max={Math.max(included.length, 1)}
                 />
               ) : (
-                <p className="mt-0.5 text-sm text-fg-muted">Strani se pripravljajo.</p>
+                'Strani se pripravljajo.'
               )}
-            </div>
+            </Notice>
+          ) : result ? (
+            <Notice size="sm" tone={result.simulated ? 'neutral' : 'success'}>
+              {result.message}
+            </Notice>
           ) : null}
-          {!busy ? <ResultNote message={result?.message} /> : null}
-          {!busy ? <ResultNote tone="danger" message={actionError} /> : null}
 
           <div className="border-t border-border pt-4">
             <Field
-              label="Samodejna sinhronizacija"
-              hint={`Strani se samodejno znova preberejo ${everyDays(currentDays)}.`}
+              label="Samodejno ponovno branje"
+              hint={`Strani se bodo samodejno znova prebrale ${everyDays(currentDays)}.`}
               className="max-w-xs"
             >
               <Select

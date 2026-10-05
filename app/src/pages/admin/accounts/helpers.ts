@@ -19,3 +19,19 @@ export const ACCOUNT_FORMS: [string, string, string, string] = [
   'uporabniški računi',
   'uporabniških računov',
 ];
+/** "od 1 uporabniškega računa" · "od 3 uporabniških računov" (the number after "od"). */
+export const ACCOUNT_FORMS_OF: [string, string, string, string] = [
+  'uporabniškega računa',
+  'uporabniških računov',
+  'uporabniških računov',
+  'uporabniških računov',
+];
+
+/** Index into a four-form set, the way plural() chooses it. */
+export function formIndex(n: number): 0 | 1 | 2 | 3 {
+  const abs = Math.abs(n) % 100;
+  if (abs === 1) return 0;
+  if (abs === 2) return 1;
+  if (abs === 3 || abs === 4) return 2;
+  return 3;
+}

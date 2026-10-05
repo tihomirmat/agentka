@@ -2,15 +2,15 @@ import type { ReactNode } from 'react';
 import { BOOKING_MODE } from '@/data/labels';
 import { Section, SectionHead } from './Section';
 
-/** Plain statements of what the agent does. No promises of results. */
+/** Plain statements of what the assistant does. No promises of results. Public pages say "pomočnik". */
 export function WhatItDoes() {
   return (
-    <Section labelledBy="kaj-agent-naredi-naslov">
+    <Section labelledBy="kaj-pomocnik-naredi-naslov">
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)] lg:gap-16">
         <SectionHead
-          id="kaj-agent-naredi-naslov"
-          title="Kaj agent naredi"
-          lead="Agent dela po jasnih pravilih. To počne na vaši spletni strani, ko obiskovalec odpre pogovor."
+          id="kaj-pomocnik-naredi-naslov"
+          title="Kaj pomočnik naredi"
+          lead="Pomočnik dela po jasnih pravilih, ko obiskovalec na vaši spletni strani odpre pogovor."
         />
         <dl className="divide-y divide-border border-y border-border">
           <Item term="Odgovarja iz vaše spletne strani">
@@ -21,12 +21,12 @@ export function WhatItDoes() {
             <p>Obiskovalcu pomaga do termina na enega od dveh načinov. Izberete ga sami.</p>
             <ul className="mt-2 flex flex-col gap-2">
               <li>
-                <span className="font-medium text-fg">{BOOKING_MODE.request.label}.</span>{' '}
-                {BOOKING_MODE.request.description}
+                <span className="font-medium text-fg">{BOOKING_MODE.request.label}.</span> Pomočnik zapiše želeni
+                termin, vi ga potrdite po e-pošti. Deluje brez koledarja.
               </li>
               <li>
-                <span className="font-medium text-fg">{BOOKING_MODE.auto.label}.</span>{' '}
-                {BOOKING_MODE.auto.description}
+                <span className="font-medium text-fg">{BOOKING_MODE.auto.label}.</span> Pomočnik ponudi proste
+                termine iz vašega Google Koledarja in termin vpiše sam.
               </li>
             </ul>
           </Item>

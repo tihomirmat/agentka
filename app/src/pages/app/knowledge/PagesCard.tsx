@@ -1,16 +1,16 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CircleAlert, EyeOff, Globe, Search } from 'lucide-react';
+import { CircleAlert, Globe, Info, Search } from 'lucide-react';
 import * as api from '@/data/api';
-import { formatNumber, formatRelativeDateTime, formatUrl } from '@/data/format';
-import { SOURCE_STATUS } from '@/data/labels';
+import { formatRelativeDateTime, formatUrl } from '@/data/format';
+import { SOURCE_STATUS, SYNC_WORDS } from '@/data/labels';
 import {
   Button,
   Card,
   CardHeader,
   Checkbox,
   EmptyState,
-  Input,
-  Select,
+  FilterChips,
+  SearchField,
   SkeletonRows,
   StatusPill,
   Switch,
@@ -29,19 +29,37 @@ import { fold, pagesNowIncluded } from './helpers';
 type Filter = 'all' | 'included' | 'excluded' | 'error';
 
 /*
- * The table switches from the compact layout (status, size and date under the title) to
+ * The table switches from the compact layout (status and date under the title) to
  * the full one (own columns) at a viewport of 1360px. Tailwind needs the class names
  * written out in full, so they are constants and never built from parts.
  */
 const FULL_CELL = 'hidden min-[1360px]:table-cell';
 const COMPACT_ONLY = 'min-[1360px]:hidden';
 
+/**
+ * An address that may only break after "/" and "-": a break hint is placed there, so a long
+ * address wraps between its parts and never in the middle of a word.
+ */
+function BreakableAddress({ text }: { text: string }) {
+  const parts = text.match(/[^/-]+[/-]?|[/-]/g) ?? [text];
+  return (
+    <>
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {part}
+          {i < parts.length - 1 ? <wbr /> : null}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 interface PagesCardProps {
   pages: api.KnowledgeSource[];
   loading: boolean;
   error: string | null;
   reload: () => void;
-  /** an import or sync is running: the rows must not change under it */
+  /** an import or re-read is running: the rows must not change under it */
   busy: boolean;
   onFocusUrl: () => void;
 }
@@ -222,14 +240,11 @@ export function PagesCard({ pages, loading, error, reload, busy, onFocusUrl }: P
                 }
               />
             </TH>
-            <TH>Naslov</TH>
+            <TH>Stran</TH>
             <TH>Vključena</TH>
             <TH className={FULL_CELL}>Stanje</TH>
-            <TH className={FULL_CELL}>Naslov strani</TH>
-            <TH numeric className={FULL_CELL}>
-              Znaki
-            </TH>
-            <TH className={FULL_CELL}>Zadnja sinhronizacija</TH>
+            <TH className={FULL_CELL}>Povezava</TH>
+            <TH className={FULL_CELL}>{SYNC_WORDS.lastLabel}</TH>
           </TR>
         </THead>
         <TBody>
@@ -238,10 +253,9 @@ export function PagesCard({ pages, loading, error, reload, busy, onFocusUrl }: P
             const status = SOURCE_STATUS[p.status];
             const failed = p.status === 'error';
             const shownUrl = p.url ? formatUrl(p.url) : '';
-            const hasNote = !on || failed;
             return (
               <Fragment key={p.id}>
-                <TR muted={!on} className={cn(hasNote && 'border-b-0')}>
+                <TR muted={!on} className={cn(failed && 'border-b-0')}>
                   <TD className="w-10 pr-0 align-top">
                     <Checkbox
                       aria-label={`Izberi stran »${p.title}«`}
@@ -251,18 +265,24 @@ export function PagesCard({ pages, loading, error, reload, busy, onFocusUrl }: P
                   </TD>
                   <TD className="min-w-0 align-top">
                     <p className={cn('break-words font-medium', on ? 'text-fg' : 'text-fg-muted')}>{p.title}</p>
+                    {p.note ? (
+                      // Why an import suggested leaving this page out: it stays with the row.
+                      <p className="mt-1 flex items-start gap-1.5 text-sm text-fg-muted">
+                        <Info size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
+                        <span className="min-w-0">{p.note}</span>
+                      </p>
+                    ) : null}
                     <div className={cn('mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1', COMPACT_ONLY)}>
                       <StatusPill tone={status.tone} live={p.status === 'pending'}>
                         {status.label}
                       </StatusPill>
-                      <span className="nums text-xs text-fg-subtle">{formatNumber(p.chars)} znakov</span>
                       <span className="text-xs text-fg-subtle">
-                        {p.last_synced_at ? formatRelativeDateTime(p.last_synced_at) : 'še ni sinhronizirana'}
+                        {p.last_synced_at ? formatRelativeDateTime(p.last_synced_at) : 'še ni prebrana'}
                       </span>
                     </div>
                     {shownUrl ? (
-                      <p className={cn('mt-1 break-all font-mono text-xs text-fg-subtle', COMPACT_ONLY)}>
-                        {shownUrl}
+                      <p className={cn('mt-1 break-words font-mono text-xs text-fg-subtle', COMPACT_ONLY)}>
+                        <BreakableAddress text={shownUrl} />
                       </p>
                     ) : null}
                   </TD>
@@ -293,32 +313,21 @@ export function PagesCard({ pages, loading, error, reload, busy, onFocusUrl }: P
                       '—'
                     )}
                   </TD>
-                  <TD numeric className={cn('align-top', FULL_CELL)}>
-                    {formatNumber(p.chars)}
-                  </TD>
                   <TD nowrap muted className={cn('align-top', FULL_CELL)}>
                     {p.last_synced_at ? formatRelativeDateTime(p.last_synced_at) : '—'}
                   </TD>
                 </TR>
-                {hasNote ? (
+                {failed ? (
                   // The explanation gets a line of its own, as wide as the table: in the title column it wrapped into a tall, narrow strip.
                   <TR muted={!on}>
-                    <TD colSpan={7} className="pt-0 first:pl-14 sm:first:pl-14">
-                      {!on ? (
-                        <p className="flex items-start gap-1.5 text-sm text-fg-subtle">
-                          <EyeOff size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
-                          <span>Izključena stran: agent je ne uporablja.</span>
-                        </p>
-                      ) : null}
-                      {failed ? (
-                        <p className="flex items-start gap-1.5 text-sm text-danger">
-                          <CircleAlert size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
-                          <span>
-                            {p.error ?? 'Strani ni bilo mogoče prebrati.'} Preverite, ali se stran odpre v brskalniku, nato
-                            pritisnite »Sinhroniziraj zdaj«. Če se napaka ponovi, stran izključite.
-                          </span>
-                        </p>
-                      ) : null}
+                    <TD colSpan={6} className="pt-0 first:pl-14 sm:first:pl-14">
+                      <p className="flex items-start gap-1.5 text-sm text-danger">
+                        <CircleAlert size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
+                        <span>
+                          {p.error ?? 'Strani ni bilo mogoče prebrati.'} Preverite, ali se stran odpre v brskalniku, nato
+                          pritisnite »Preberi strani znova«. Če se napaka ponovi, stran izključite.
+                        </span>
+                      </p>
                     </TD>
                   </TR>
                 ) : null}
@@ -341,48 +350,53 @@ export function PagesCard({ pages, loading, error, reload, busy, onFocusUrl }: P
       />
       {showTools ? (
         <div className="flex flex-col gap-3 border-b border-border px-4 pb-4 sm:px-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="min-w-0 flex-1 basis-56 sm:max-w-sm">
-              <Input
-                aria-label="Poiščite stran po naslovu ali naslovu strani"
-                type="search"
-                prefix={<Search size={16} aria-hidden="true" />}
-                placeholder="Poiščite stran"
-                value={query}
-                onChange={(e) => changeQuery(e.target.value)}
-              />
-            </div>
-            <Select<Filter>
-              aria-label="Prikaži strani"
-              className="w-full sm:w-52"
-              value={filter}
-              onValueChange={changeFilter}
-              options={[
-                { value: 'all', label: `Vse strani (${counts.all})` },
-                { value: 'included', label: `Vključene (${counts.included})` },
-                { value: 'excluded', label: `Izključene (${counts.excluded})` },
-                { value: 'error', label: `Z napako (${counts.error})` },
-              ]}
-            />
-          </div>
-          <div className="flex min-h-9 flex-wrap items-center gap-x-4 gap-y-2">
-            <p className="nums text-sm text-fg-muted" aria-live="polite">
-              {chosen.length > 0 ? `Izbrano: ${chosen.length} od ${visible.length}` : 'Označite strani v tabeli, da jih spremenite naenkrat.'}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" disabled={!canInclude || rowsLocked} onClick={() => void setMany(true)}>
-                Vključi izbrane
-              </Button>
-              <Button size="sm" disabled={!canExclude || rowsLocked} onClick={() => void setMany(false)}>
-                Izključi izbrane
-              </Button>
-              {chosen.length > 0 ? (
+          <SearchField
+            label="Iskanje po straneh"
+            placeholder="Naslov ali povezava strani"
+            value={query}
+            onChange={changeQuery}
+            className="sm:max-w-sm"
+          />
+          <FilterChips<Filter>
+            label="Prikaži strani"
+            value={filter}
+            onChange={changeFilter}
+            options={[
+              { value: 'all', label: 'Vse', count: counts.all },
+              { value: 'included', label: 'Vključene', count: counts.included },
+              { value: 'excluded', label: 'Izključene', count: counts.excluded },
+              { value: 'error', label: 'Z napako', count: counts.error },
+            ]}
+          />
+          {/* The bulk actions appear only when rows are ticked. */}
+          {chosen.length > 0 ? (
+            <div className="flex min-h-9 flex-wrap items-center gap-x-4 gap-y-2">
+              <p className="nums text-sm text-fg-muted" aria-live="polite">
+                Izbrano: {chosen.length} od {visible.length}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  disabled={rowsLocked}
+                  disabledReason={!canInclude && 'Vse izbrane strani so že vključene.'}
+                  onClick={() => void setMany(true)}
+                >
+                  Vključi izbrane
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={rowsLocked}
+                  disabledReason={!canExclude && 'Vse izbrane strani so že izključene.'}
+                  onClick={() => void setMany(false)}
+                >
+                  Izključi izbrane
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
                   Počisti izbiro
                 </Button>
-              ) : null}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       ) : null}
       {body}

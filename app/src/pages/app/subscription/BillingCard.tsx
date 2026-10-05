@@ -1,9 +1,9 @@
-import { CreditCard, Info } from 'lucide-react';
-import { Button, Card, CardBody } from '@/components/ui';
+import { CreditCard } from 'lucide-react';
+import { Button, Card, CardBody, Notice } from '@/components/ui';
 
 export interface BillingCardProps {
   pending: boolean;
-  /** the API's own sentence from the last click, shown unchanged */
+  /** the API's own sentence from the last click on THIS card, shown unchanged */
   lastMessage: string | null;
   onManage: () => void;
 }
@@ -23,10 +23,9 @@ export function BillingCard({ pending, lastMessage, onManage }: BillingCardProps
           </Button>
         </div>
         {lastMessage ? (
-          <p className="flex items-start gap-2 border-t border-border pt-3 text-sm text-fg-muted" role="status">
-            <Info size={14} className="mt-[3px] shrink-0 text-info" aria-hidden="true" />
-            <span>{lastMessage}</span>
-          </p>
+          <Notice size="sm" tone="neutral">
+            {lastMessage}
+          </Notice>
         ) : null}
       </CardBody>
     </Card>

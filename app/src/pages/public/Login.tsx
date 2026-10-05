@@ -2,11 +2,10 @@ import { useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { BRAND } from '@/brand';
 import * as api from '@/data/api';
-import { Button, Card, CardBody, CardFooter, Field, Input, useToast } from '@/components/ui';
-import { FormError } from './auth/FormError';
+import { Button, Card, CardBody, CardFooter, Field, Input, Notice } from '@/components/ui';
 import { PasswordInput } from './auth/PasswordInput';
 import { emailError } from './auth/validation';
-import { TEXT_LINK } from './shared/planText';
+import { TEXT_LINK } from './shared/links';
 
 interface Errors {
   email?: string;
@@ -14,18 +13,20 @@ interface Errors {
 }
 
 /**
- * Sign-in. In stage 1 any valid-looking e-mail with any password signs in (api.login).
- * On success the person goes back to the page the guard sent them away from, else to Pregled.
+ * Sign-in. In stage 1 any valid-looking e-mail with any password signs in as the sample
+ * customer (api.login). On success the person goes back to the page the guard sent them away
+ * from, else to Pregled.
  */
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const toast = useToast();
   const from = (location.state as { from?: string } | null)?.from ?? '/app/pregled';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<Errors>({});
+  // The stage 1 API has no Google sign-in, so the button only explains that, in one inline note.
+  const [googleTried, setGoogleTried] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const signIn = api.useAction(api.login);
@@ -41,11 +42,6 @@ export default function Login() {
     if (next.password) return passwordRef.current?.focus();
     const session = await signIn.run(email, password);
     if (session) navigate(from, { replace: true });
-  }
-
-  function google() {
-    // There is no Google sign-in function in the stage 1 API, so nothing real is called.
-    toast.info('Prijava z Google računom v predogledu ni povezana. Prijavite se z e-naslovom in geslom.');
   }
 
   return (
@@ -81,9 +77,13 @@ export default function Login() {
                   }}
                 />
               </Field>
-              {signIn.error ? <FormError>{signIn.error}</FormError> : null}
+              {signIn.error ? (
+                <Notice size="sm" tone="danger">
+                  {signIn.error}
+                </Notice>
+              ) : null}
               <Button type="submit" variant="primary" loading={signIn.pending} block>
-                Prijava
+                Prijavite se
               </Button>
             </form>
 
@@ -93,14 +93,20 @@ export default function Login() {
               <span className="h-px flex-1 bg-border" />
             </div>
 
-            <Button block onClick={google}>
-              Nadaljuj z Google računom
+            <Button block onClick={() => setGoogleTried(true)}>
+              Nadaljujte z Google računom
             </Button>
+            {googleTried ? (
+              <Notice size="sm" tone="neutral" className="mt-3">
+                Predogled: prijava z Google računom ni bila izvedena. V polni različici se prijavite z Google računom.
+                Zdaj uporabite e-naslov in geslo.
+              </Notice>
+            ) : null}
           </CardBody>
           <CardFooter className="justify-start rounded-b-lg bg-surface-2 text-sm text-fg-muted">
             <p>
-              Predogled: prijava je simulirana. Vpišite kateri koli <span className="whitespace-nowrap">e-naslov</span> in
-              geslo.
+              Predogled: prijava je simulirana. Z vsakim <span className="whitespace-nowrap">e-naslovom</span> in geslom
+              se prijavite kot vzorčna stranka.
             </p>
           </CardFooter>
         </Card>

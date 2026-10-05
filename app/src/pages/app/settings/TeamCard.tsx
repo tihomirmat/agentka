@@ -10,10 +10,10 @@ import {
   EmptyState,
   Field,
   Input,
+  Notice,
   Select,
   SkeletonRows,
   StatusPill,
-  Tooltip,
   useToast,
 } from '@/components/ui';
 import * as api from '@/data/api';
@@ -45,18 +45,21 @@ export function TeamCard({ accountName, team, loading, error, onRetry }: TeamCar
   const [email, setEmail] = useState('');
   const [attempted, setAttempted] = useState(false);
   const [removing, setRemoving] = useState<api.User | null>(null);
+  /** the api's sentence after an invitation: a simulated outside action, shown until the next one */
+  const [inviteNote, setInviteNote] = useState<string | null>(null);
 
   const emailError = EMAIL_RE.test(email.trim()) ? undefined : 'E-naslov ni pravilno zapisan. Primer: ime@podjetje.si';
 
   async function onInvite(e: FormEvent) {
     e.preventDefault();
     setAttempted(true);
+    setInviteNote(null);
     if (emailError) return;
     const result = await invite.run(email.trim());
     if (!result) return;
     setEmail('');
     setAttempted(false);
-    if (result.simulated) toast.info(result.message);
+    if (result.simulated) setInviteNote(result.message);
     else toast.success(result.message);
   }
 
@@ -78,32 +81,23 @@ export function TeamCard({ accountName, team, loading, error, onRetry }: TeamCar
             >
               <div className="min-w-0 flex-1 basis-44">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="font-medium text-fg">{user.name}</span>
+                  {/* Until an invitation is accepted the address IS the name: it is printed once. */}
+                  <span className="min-w-0 break-words font-medium text-fg">{user.name}</span>
                   <Badge tone={user.account_role === 'owner' ? 'accent' : 'neutral'}>
                     {ROLE_LABEL[user.account_role]}
                   </Badge>
                   {user.status === 'invited' ? <StatusPill tone="info">Vabilo čaka</StatusPill> : null}
                 </div>
-                <CopyValue
-                  value={user.email}
-                  copyLabel={`Kopiraj e-naslov (${user.name})`}
-                  className="text-fg-muted"
-                />
+                {user.name === user.email ? null : (
+                  <CopyValue
+                    value={user.email}
+                    copyLabel={`Kopiraj e-naslov (${user.name})`}
+                    className="text-fg-muted"
+                  />
+                )}
               </div>
-              {user.account_role === 'owner' ? (
-                <Tooltip content="Lastnika uporabniškega računa ni mogoče odstraniti.">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={Trash2}
-                    aria-disabled="true"
-                    aria-label={`Odstrani osebo ${user.name} (ni mogoče: lastnik uporabniškega računa)`}
-                    onClick={(e) => e.preventDefault()}
-                  >
-                    Odstrani
-                  </Button>
-                </Tooltip>
-              ) : (
+              {/* The owner cannot be removed, so the row has no button at all. */}
+              {user.account_role === 'owner' ? null : (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -147,6 +141,11 @@ export function TeamCard({ accountName, team, loading, error, onRetry }: TeamCar
             </Button>
           </div>
         </div>
+        {inviteNote ? (
+          <Notice size="sm" tone="neutral" className="mt-4">
+            {inviteNote}
+          </Notice>
+        ) : null}
       </form>
 
       {removing ? (
@@ -162,7 +161,8 @@ export function TeamCard({ accountName, team, loading, error, onRetry }: TeamCar
           onConfirm={async () => {
             const result = await remove.run(removing.id);
             if (!result) return;
-            if (result.simulated) toast.info(result.message);
+            // The row disappears from the list: a toast says it. (A simulated result would stay as a notice.)
+            if (result.simulated) setInviteNote(result.message);
             else toast.success(result.message);
           }}
         />

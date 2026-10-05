@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
-import { Circle, CircleCheck, Mail } from 'lucide-react';
+import { Mail } from 'lucide-react';
 import { BRAND } from '@/brand';
 import { HOW_IT_WORKS_ID } from '@/components/layout';
-import { Card, CardBody, CodeBlock, StatusPill, Switch } from '@/components/ui';
+import { Card, CardBody, StatusPill, StepList, Switch } from '@/components/ui';
 import { TranscriptBubble } from '@/components/widget';
 import { formatNumber, formatTimecode } from '@/data/format';
 import { SOURCE_STATUS } from '@/data/labels';
@@ -29,14 +29,14 @@ export function HowItWorks() {
         <Step
           n={1}
           title="Vpišete naslov svoje spletne strani"
-          text={`${BRAND} prebere besedilo vaših strani. Tiste, ki jih agent ne sme uporabiti, izklopite.`}
+          text={`${BRAND} prebere besedilo vaših strani. Tiste, ki jih pomočnik ne sme uporabiti, izklopite.`}
         >
           <PagesExample />
         </Step>
         <Step
           n={2}
           title="Prilepite eno vrstico kode"
-          text="Vrstico vstavite v kodo svoje spletne strani. Na njej se pojavi pripomoček, prek katerega obiskovalci govorijo ali pišejo z agentom."
+          text="Vrstico vstavite v kodo svoje spletne strani. Na njej se pojavi pripomoček, prek katerega obiskovalci govorijo ali pišejo s pomočnikom."
         >
           <InstallExample />
         </Step>
@@ -120,37 +120,36 @@ function PagesExample() {
   );
 }
 
-/** Step 2: the one line of code, and the install checklist the app shows afterwards. */
+/**
+ * Step 2: a picture of the one line of code and of the install checklist the app shows
+ * afterwards. Both are static on purpose: nothing here copies anything or ticks itself.
+ */
 function InstallExample() {
-  const checks: { done: boolean; text: string }[] = [
-    { done: true, text: 'Koda je kopirana' },
-    { done: true, text: `Dovoljena domena: ${EXAMPLE_SITE}` },
-    { done: false, text: 'Zadnji pogovor s te domene: še ni pogovora' },
-  ];
   return (
     <Card className="flex-1">
-      <CardBody className="flex flex-col gap-4">
-        <CodeBlock label="Koda za vgradnjo" code={EXAMPLE_EMBED_CODE} />
-        <p className="text-sm text-fg-subtle">Primer kode. Pravo kodo dobite v zadnjem koraku nastavitve.</p>
-        <div>
-          <p className="eyebrow">Preverjanje namestitve</p>
-          <ul className="mt-2 flex flex-col gap-2">
-            {checks.map((c) => (
-              <li key={c.text} className="flex items-start gap-2 text-base text-fg">
-                {c.done ? (
-                  <CircleCheck size={18} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
-                ) : (
-                  <Circle size={18} className="mt-0.5 shrink-0 text-fg-subtle" aria-hidden="true" />
-                )}
-                <span className="min-w-0 break-words">
-                  <span className="sr-only">{c.done ? 'Opravljeno: ' : 'Še ni: '}</span>
-                  {c.text}
-                </span>
-              </li>
-            ))}
-          </ul>
+      <CardBody className="flex flex-col gap-3">
+        <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-surface-2">
+          <p className="eyebrow border-b border-border px-4 py-2">Koda za vgradnjo</p>
+          <pre className="m-0 whitespace-pre-wrap break-all px-4 py-3 font-mono text-xs text-fg">
+            <code>{EXAMPLE_EMBED_CODE}</code>
+          </pre>
         </div>
+        <p className="text-sm text-fg-subtle">Primer kode. Pravo kodo dobite v zadnjem koraku nastavitve.</p>
+        <p className="eyebrow mt-1">Preverjanje namestitve</p>
       </CardBody>
+      <StepList
+        className="border-t border-border"
+        steps={[
+          { id: 'koda', title: 'Kopirajte kodo', detail: 'Kodo ste kopirali.', state: 'done' },
+          { id: 'domena', title: 'Vpišite domeno', detail: `Dovoljena domena: ${EXAMPLE_SITE}`, state: 'done' },
+          {
+            id: 'pogovor',
+            title: 'Prvi pogovor s te domene',
+            detail: 'Pojavi se sam, ko je koda na strani.',
+            state: 'waiting',
+          },
+        ]}
+      />
     </Card>
   );
 }

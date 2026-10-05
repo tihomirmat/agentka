@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { CircleAlert, Send } from 'lucide-react';
 import * as api from '@/data/api';
 import { formatRelativeDay } from '@/data/format';
+import { EMAIL_KIND } from '@/data/labels';
+import { BRAND } from '@/brand';
 import {
   Button,
   Card,
@@ -10,10 +12,13 @@ import {
   EmptyState,
   Field,
   Input,
+  Notice,
   PageHeader,
+  SaveBar,
   Select,
   Skeleton,
   SkeletonText,
+  useDraft,
   useToast,
 } from '@/components/ui';
 import { RecentMessages } from './notifications/RecentMessages';
@@ -25,12 +30,12 @@ import {
   VISITOR_VARIABLES,
   valuesFor,
 } from './notifications/templates';
-import { ResultNote } from './screen-kit/ResultNote';
-import { SaveBar } from './screen-kit/SaveBar';
-import { useDraft } from './screen-kit/useDraft';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PREVIEW_CONVERSATIONS = 8;
+
+const TITLE = 'Obvestila';
+const DESCRIPTION = 'Kaj pošljemo po vsakem pogovoru in na kateri naslov.';
 
 /** Obvestila: who is told what after a conversation, and in whose name. */
 export default function Notifications() {
@@ -42,21 +47,16 @@ export default function Notifications() {
   const draft = useDraft<api.NotificationSettings>(settings.data);
   const save = api.useAction(api.updateNotificationSettings);
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [testNote, setTestNote] = useState<string | null>(null);
-  const [testError, setTestError] = useState<string | null>(null);
-  const sendTest = api.useAction(api.sendTestEmail, {
-    onError: (m) => {
-      setTestError(m);
-      toast.error(m);
-    },
-  });
+  // The api's own sentence for the last test message: ONE inline notice, no toast as well.
+  const [testResult, setTestResult] = useState<api.ActionResult | null>(null);
+  const sendTest = api.useAction(api.sendTestEmail, { onError: toast.error });
 
   const value = draft.value;
 
   if (settings.error && !value && !settings.loading) {
     return (
       <>
-        <PageHeader title="Obvestila" description="Kaj pošljemo po vsakem pogovoru in na kateri naslov." />
+        <PageHeader title={TITLE} description={DESCRIPTION} />
         <Card>
           <EmptyState
             icon={CircleAlert}
@@ -71,7 +71,7 @@ export default function Notifications() {
   if (!value) {
     return (
       <>
-        <PageHeader title="Obvestila" description="Kaj pošljemo po vsakem pogovoru in na kateri naslov." />
+        <PageHeader title={TITLE} description={DESCRIPTION} />
         <div className="flex flex-col gap-6" role="status" aria-label="Nalaganje">
           {[0, 1, 2].map((i) => (
             <Card key={i}>
@@ -101,7 +101,11 @@ export default function Notifications() {
 
   // The test message goes to the SAVED address, so it is offered only when the field matches it.
   const emailChanged = draft.server !== undefined && value.notify_email !== draft.server.notify_email;
-  const canTest = !emailChanged && !notifyError;
+  const testBlockedReason = emailChanged
+    ? 'Najprej shranite spremembe: testno sporočilo gre na shranjeni naslov.'
+    : notifyError
+      ? 'Najprej popravite e-naslov za obvestila.'
+      : false;
 
   const business = account.data?.name ?? value.sender_name;
   const recent = (conversations.data ?? []).slice(0, PREVIEW_CONVERSATIONS);
@@ -111,14 +115,9 @@ export default function Notifications() {
   const senderShown = sender || business;
 
   async function runTest() {
-    setTestNote(null);
-    setTestError(null);
+    setTestResult(null);
     const r = await sendTest.run();
-    if (r) {
-      setTestNote(r.message);
-      if (r.simulated) toast.info(r.message);
-      else toast.success(r.message);
-    }
+    if (r) setTestResult(r);
   }
 
   async function submit() {
@@ -132,17 +131,21 @@ export default function Notifications() {
 
   return (
     <>
-      <PageHeader title="Obvestila" description="Kaj pošljemo po vsakem pogovoru in na kateri naslov." />
+      <PageHeader title={TITLE} description={DESCRIPTION} />
 
       <div className="flex min-w-0 flex-col gap-6">
-        <div className="grid min-w-0 gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader
-              title="Naslov za obvestila"
-              description="Na ta naslov prejmete povzetek pogovorov in podatke obiskovalcev."
-            />
-            <CardBody className="flex flex-col gap-4">
-              <Field label="E-naslov za obvestila" error={notifyError}>
+        <Card>
+          <CardHeader
+            title="Naslov in pošiljatelj"
+            description="Obvestila prejmete na svoj e-naslov. Sporočila obiskovalcem se pošljejo v imenu vašega podjetja, njihovi odgovori pa prispejo na naslov za odgovore."
+          />
+          <CardBody className="flex flex-col gap-4">
+            <div className="grid min-w-0 gap-4 lg:grid-cols-3">
+              <Field
+                label="E-naslov za obvestila"
+                error={notifyError}
+                hint="Na ta naslov prejmete povzetek pogovorov in podatke obiskovalcev."
+              >
                 <Input
                   type="email"
                   inputMode="email"
@@ -153,27 +156,6 @@ export default function Notifications() {
                   onChange={(e) => draft.patch({ notify_email: e.target.value })}
                 />
               </Field>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <Button icon={Send} loading={sendTest.pending} disabled={!canTest} onClick={() => void runTest()}>
-                  Pošlji testno sporočilo
-                </Button>
-                {emailChanged ? (
-                  <p className="min-w-0 flex-1 basis-48 text-sm text-fg-subtle">
-                    Najprej shranite spremembe: testno sporočilo gre na shranjeni naslov.
-                  </p>
-                ) : null}
-              </div>
-              <ResultNote message={testNote} />
-              <ResultNote tone="danger" message={testError} />
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader
-              title="Pošiljatelj"
-              description="Sporočila obiskovalcem se pošljejo v imenu vašega podjetja. Ko obiskovalec odgovori, odgovor prispe na vaš naslov."
-            />
-            <CardBody className="flex flex-col gap-4">
               <Field label="Ime pošiljatelja" error={senderError} hint="To ime obiskovalec vidi ob prejetem sporočilu.">
                 <Input
                   autoComplete="organization"
@@ -200,19 +182,31 @@ export default function Notifications() {
                   onChange={(e) => draft.patch({ reply_to: e.target.value })}
                 />
               </Field>
-            </CardBody>
-          </Card>
-        </div>
-
-        <Card tone="quiet">
-          <CardBody className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] sm:items-start">
-            <div className="min-w-0">
-              <p className="text-base font-medium text-fg">Predogled uporablja pogovor</p>
-              <p className="text-sm text-fg-muted">
-                Spremenljivke v besedilih spodaj se zapolnijo s podatki izbranega pogovora, da vidite, kaj bo prejemnik
-                zares prebral.
-              </p>
             </div>
+            <div className="border-t border-border pt-4">
+              <Button
+                icon={Send}
+                loading={sendTest.pending}
+                disabledReason={testBlockedReason}
+                onClick={() => void runTest()}
+              >
+                Pošlji testno sporočilo
+              </Button>
+            </div>
+            {testResult ? (
+              <Notice size="sm" tone={testResult.simulated ? 'neutral' : 'success'}>
+                {testResult.message}
+              </Notice>
+            ) : null}
+          </CardBody>
+        </Card>
+
+        <Notice tone="neutral" title="Pogovor za predogled" live={false}>
+          <p>
+            Spremenljivke v besedilih spodaj se zapolnijo s podatki izbranega pogovora, da vidite, kaj bo prejemnik zares
+            prebral.
+          </p>
+          <div className="mt-3 max-w-sm">
             {recent.length > 0 && chosen ? (
               <Select
                 aria-label="Pogovor za predogled"
@@ -227,11 +221,11 @@ export default function Notifications() {
             ) : (
               <p className="text-sm text-fg-subtle">Pogovorov še ni, zato so spremenljivke prikazane z imenom.</p>
             )}
-          </CardBody>
-        </Card>
+          </div>
+        </Notice>
 
         <TemplateCard
-          title="Potrditev obiskovalcu"
+          title={EMAIL_KIND.visitor_confirmation}
           description="Obiskovalec po pogovoru prejme povzetek na svoj e-naslov, če ga je vpisal."
           enabled={value.visitor_email_enabled}
           onEnabledChange={(on) => draft.patch({ visitor_email_enabled: on })}
@@ -240,6 +234,7 @@ export default function Notifications() {
           defaultValue={DEFAULT_VISITOR_TEMPLATE}
           variables={VISITOR_VARIABLES}
           subject={`Povzetek pogovora – ${senderShown}`}
+          subjectNote={`Zadevo določi ${BRAND} in je ni mogoče spremeniti.`}
           from={senderShown}
           to={chosen?.visitor_email ?? null}
           toMissing="obiskovalec ni vpisal e-naslova"
@@ -249,7 +244,7 @@ export default function Notifications() {
         />
 
         <TemplateCard
-          title="Povzetek za vas"
+          title={EMAIL_KIND.owner_notification}
           description="Po vsakem pogovoru prejmete povzetek in podatke obiskovalca na naslov za obvestila."
           enabled={value.owner_email_enabled}
           onEnabledChange={(on) => draft.patch({ owner_email_enabled: on })}
@@ -258,6 +253,7 @@ export default function Notifications() {
           defaultValue={DEFAULT_OWNER_TEMPLATE}
           variables={OWNER_VARIABLES}
           subject={chosen ? `Nov pogovor: ${chosen.topic}` : 'Nov pogovor: tema pogovora'}
+          subjectNote={`Zadeva vsebuje temo pogovora. Določi jo ${BRAND} in je ni mogoče spremeniti.`}
           from={senderShown}
           to={notify && !notifyError ? notify : null}
           toMissing="naslov za obvestila še ni vpisan"
@@ -270,7 +266,7 @@ export default function Notifications() {
       </div>
 
       <SaveBar
-        visible={draft.dirty}
+        dirty={draft.dirty}
         saving={save.pending}
         canSave={!invalid}
         blockedReason={invalid ? 'Popravite polja, označena z napako, da lahko shranite.' : undefined}

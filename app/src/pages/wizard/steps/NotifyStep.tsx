@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { Send } from 'lucide-react';
 import { WizardStep } from '@/components/layout';
-import { Button, Card, CardBody, Field, Input, SwitchRow } from '@/components/ui';
+import { Button, Card, CardBody, Field, Input, Notice, SwitchRow } from '@/components/ui';
 import * as api from '@/data/api';
 import { messageOf, type NotifyDraft, type StepNav } from '../draft';
-import { Callout } from '../parts';
 
 interface Props extends StepNav {
   draft: NotifyDraft;
@@ -74,45 +73,47 @@ export function NotifyStep({ draft, onChange, onBack, onSkip, onDone }: Props) {
       }
     >
       <div className="flex min-w-0 flex-col gap-6">
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
-          <Field
-            className="sm:flex-1"
-            label="E-naslov za obvestila"
-            hint="To je lahko drug naslov, kot ste ga uporabili pri registraciji."
-            error={emailError}
-          >
-            <Input
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              spellCheck={false}
-              value={draft.email}
-              onChange={(e) => {
-                setEmailError(null);
-                // the earlier test result belonged to the previous address
-                setTestNote(null);
-                onChange({ email: e.target.value });
-              }}
-            />
-          </Field>
-          <div className="sm:pt-[1.625rem]">
-            <Button icon={Send} loading={testing} disabled={busy} onClick={sendTest} className="w-full sm:w-auto">
-              Pošlji testno sporočilo
-            </Button>
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
+            <Field
+              className="sm:flex-1"
+              label="E-naslov za obvestila"
+              hint="To je lahko drug naslov, kot ste ga uporabili pri registraciji."
+              error={emailError}
+            >
+              <Input
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                spellCheck={false}
+                value={draft.email}
+                onChange={(e) => {
+                  setEmailError(null);
+                  // the earlier test result belonged to the previous address
+                  setTestNote(null);
+                  onChange({ email: e.target.value });
+                }}
+              />
+            </Field>
+            <div className="sm:pt-[1.625rem]">
+              <Button icon={Send} loading={testing} disabled={busy} onClick={sendTest} className="w-full sm:w-auto">
+                Pošlji testno sporočilo
+              </Button>
+            </div>
           </div>
+          {/* Simulated outside action: the result stays here, next to its button. No toast. */}
+          {testNote ? (
+            <Notice size="sm" tone="neutral">
+              {testNote}
+            </Notice>
+          ) : null}
         </div>
-
-        {testNote ? (
-          <Callout tone="info" title="Rezultat testa">
-            {testNote}
-          </Callout>
-        ) : null}
 
         <Card>
           <CardBody>
             <SwitchRow
               label="Obiskovalcu pošlji potrditev po e-pošti"
-              description="Obiskovalec po pogovoru prejme povzetek in dogovorjeno, če je vpisal svoj e-naslov."
+              description="Obiskovalec po pogovoru prejme povzetek in dogovor, če je vpisal svoj e-naslov."
               checked={draft.visitorMail}
               onCheckedChange={(visitorMail) => onChange({ visitorMail })}
             />

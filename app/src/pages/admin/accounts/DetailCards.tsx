@@ -1,6 +1,5 @@
-import type { ReactNode } from 'react';
 import { CircleCheck } from 'lucide-react';
-import { Card, CardBody, CardHeader, CopyValue, EmptyState, ProgressBar, StatusPill } from '@/components/ui';
+import { Card, CardBody, CardHeader, CopyValue, EmptyState, FactList, ProgressBar, Stat, StatusPill } from '@/components/ui';
 import {
   formatDate,
   formatDateTime,
@@ -10,12 +9,21 @@ import {
   formatRelativeDateTime,
   plural,
 } from '@/data/format';
-import { ACCOUNT_STATUS, AGENT_STATUS, LANGUAGES } from '@/data/labels';
-import type { AdminAccountDetail, ConversationOutcome } from '@/data/types';
-import { Facts } from '@/pages/app/subscription/Facts';
+import {
+  ACCOUNT_STATUS,
+  AGENT_STATUS,
+  AGENT_STATUS_HELP_ADMIN,
+  COUNT_LABELS,
+  LANGUAGES,
+  PAUSED_BY_ADMIN,
+  SYNC_WORDS,
+  TRIAL,
+} from '@/data/labels';
+import type { AdminAccountDetail, AdminErrorLine } from '@/data/types';
 import { ERROR_FORMS } from './helpers';
 
-const MUTED = <span className="text-fg-subtle">–</span>;
+/** "še ni bilo opravljeno" → "Še ni bilo opravljeno" (the one wording of labels.ts, at the start of a value). */
+const NEVER_SYNCED = SYNC_WORDS.never.charAt(0).toUpperCase() + SYNC_WORDS.never.slice(1);
 
 export function SubscriptionCard({ detail }: { detail: AdminAccountDetail }) {
   const { account, plan } = detail;
@@ -26,7 +34,7 @@ export function SubscriptionCard({ detail }: { detail: AdminAccountDetail }) {
     <Card>
       <CardHeader title="Naročnina" action={<StatusPill tone={status.tone}>{status.label}</StatusPill>} />
       <CardBody className="flex flex-col gap-5">
-        <Facts
+        <FactList
           items={[
             { label: 'Paket', value: plan ? `${plan.name}, ${formatEur(plan.price_month_eur)} na mesec` : 'Brez paketa' },
             {
@@ -34,7 +42,7 @@ export function SubscriptionCard({ detail }: { detail: AdminAccountDetail }) {
               value: `${formatDate(account.period_start)} – ${formatDate(account.period_end)}`,
             },
             trialEnd
-              ? { label: 'Preizkus se konča', value: formatDate(trialEnd) }
+              ? { label: `${TRIAL.name} se konča`, value: formatDate(trialEnd) }
               : { label: 'Konec obdobja', value: formatDate(account.period_end) },
             { label: 'Strošek tega obdobja (ocena)', value: formatEur(detail.estimated_cost_eur) },
           ]}
@@ -59,55 +67,44 @@ export function SubscriptionCard({ detail }: { detail: AdminAccountDetail }) {
 export function AgentCard({ detail }: { detail: AdminAccountDetail }) {
   const { agent } = detail;
   const status = AGENT_STATUS[detail.agent_status];
+  // EVERY pause in force, weightiest first: the admin's own pause is listed even when a failed
+  // payment outranks it, so nobody has to guess why the agent stays off after lifting one.
+  const reasons = detail.agent_status === 'paused' ? detail.agent_pause_reasons : [];
   return (
     <Card>
       <CardHeader title="Agent" action={<StatusPill tone={status.tone}>{status.label}</StatusPill>} />
-      <CardBody>
-        <dl className="grid min-w-0 gap-x-6 gap-y-4 sm:grid-cols-2">
-          <Item label="Ime agenta">{agent.name}</Item>
-          <Item label="Jezik agenta">{LANGUAGES.find((l) => l.value === agent.language)?.label ?? agent.language}</Item>
-          <Item label="Dovoljena domena">
-            {agent.allowed_domain ? <span className="font-mono text-sm">{agent.allowed_domain}</span> : 'Ni nastavljena'}
-          </Item>
-          <div className="min-w-0 sm:col-span-2">
-            <dt className="text-sm text-fg-subtle">ID agenta pri ElevenLabs</dt>
-            <dd className="mt-0.5 min-w-0">
-              {agent.elevenlabs_agent_id ? (
+      <CardBody className="flex flex-col gap-4">
+        <div className="min-w-0">
+          <p className="text-sm text-fg-muted">{AGENT_STATUS_HELP_ADMIN[detail.agent_status]}</p>
+          {reasons.length > 1 ? (
+            <p className="mt-1 text-sm text-fg-muted">Agent je ustavljen iz več razlogov. Odprava enega ne odpravi drugih.</p>
+          ) : null}
+          {reasons.length > 0 ? (
+            <ul className="mt-1 flex flex-col gap-1">
+              {reasons.map((reason) => (
+                <li key={reason} className="text-sm text-fg">
+                  <span className="font-medium">{PAUSED_BY_ADMIN[reason].label}.</span> {PAUSED_BY_ADMIN[reason].help}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+        <FactList
+          items={[
+            { label: 'Ime agenta', value: agent.name },
+            { label: 'Jezik agenta', value: LANGUAGES.find((l) => l.value === agent.language)?.label ?? agent.language },
+            {
+              label: 'Dovoljena domena',
+              value: agent.allowed_domain ? <span className="font-mono text-sm">{agent.allowed_domain}</span> : 'Ni nastavljena',
+            },
+            {
+              label: 'ID agenta pri ElevenLabs',
+              wide: true,
+              value: agent.elevenlabs_agent_id ? (
                 <CopyValue value={agent.elevenlabs_agent_id} mono copyLabel="Kopiraj ID agenta pri ElevenLabs" />
               ) : (
-                <span className="text-base text-fg-muted">Agent še ni ustvarjen.</span>
-              )}
-            </dd>
-          </div>
-        </dl>
-      </CardBody>
-    </Card>
-  );
-}
-
-function Item({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-sm text-fg-subtle">{label}</dt>
-      <dd className="mt-0.5 break-words text-base text-fg">{children}</dd>
-    </div>
-  );
-}
-
-export function KnowledgeCard({ detail }: { detail: AdminAccountDetail }) {
-  const excluded = detail.sources_total - detail.sources_included;
-  return (
-    <Card>
-      <CardHeader title="Viri znanja" />
-      <CardBody>
-        <Facts
-          items={[
-            { label: 'Vseh virov', value: formatNumber(detail.sources_total) },
-            { label: 'Vključenih', value: formatNumber(detail.sources_included) },
-            { label: 'Izključenih', value: formatNumber(excluded) },
-            {
-              label: 'Zadnja sinhronizacija',
-              value: detail.agent.last_sync_at ? formatRelativeDateTime(detail.agent.last_sync_at) : 'Še ni bila',
+                <span className="text-fg-muted">Agent še ni ustvarjen.</span>
+              ),
             },
           ]}
         />
@@ -116,57 +113,88 @@ export function KnowledgeCard({ detail }: { detail: AdminAccountDetail }) {
   );
 }
 
-const OUTCOMES: { key: ConversationOutcome; label: string }[] = [
-  { key: 'question', label: 'Vprašanja' },
-  { key: 'lead', label: 'Kontakti' },
-  { key: 'booking', label: 'Rezervacije' },
-];
-
-/** Counts only: the API returns numbers for the current period, never a conversation. */
-export function ActivityCard({ detail }: { detail: AdminAccountDetail }) {
-  const inPeriod = detail.period.conversations;
-  const counts = OUTCOMES.map(({ key, label }) => ({ label, n: inPeriod.by_outcome[key] }));
-
+/** Viri znanja: counts only, including the sources that could not be read. */
+export function KnowledgeCard({ detail }: { detail: AdminAccountDetail }) {
+  const excluded = detail.sources_total - detail.sources_included;
   return (
     <Card>
-      <CardHeader title="Aktivnost" />
+      <CardHeader title="Viri znanja" />
       <CardBody className="flex flex-col gap-5">
-        <Facts
+        <div className="flex min-w-0 flex-wrap gap-x-8 gap-y-4">
+          <Stat variant="inline" label="Vseh virov" value={formatNumber(detail.sources_total)} />
+          <Stat variant="inline" label="Vključenih" value={formatNumber(detail.sources_included)} />
+          <Stat variant="inline" label="Izključenih" value={formatNumber(excluded)} />
+          <Stat variant="inline" label="Z napako" value={formatNumber(detail.sources_failed)} sub="ni bilo mogoče prebrati" />
+        </div>
+        <FactList
+          columns={1}
           items={[
-            { label: 'Pogovorov skupaj', value: formatNumber(detail.conversations_total) },
+            {
+              label: SYNC_WORDS.lastLabel,
+              value: detail.agent.last_sync_at ? formatRelativeDateTime(detail.agent.last_sync_at) : NEVER_SYNCED,
+            },
+          ]}
+        />
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Aktivnost: numbers only, for the current billing period, counted exactly like the
+ * customer's own Pregled (the data layer does it once: detail.period).
+ */
+export function ActivityCard({ detail }: { detail: AdminAccountDetail }) {
+  const { period } = detail;
+  const outcome = period.conversations.by_outcome;
+  return (
+    <Card>
+      <CardHeader title="Aktivnost" description={`${formatDate(period.start)} – ${formatDate(period.end)}`} />
+      <CardBody className="flex flex-col gap-5">
+        <div className="flex min-w-0 flex-wrap gap-x-8 gap-y-4">
+          <Stat
+            variant="inline"
+            label={COUNT_LABELS.conversationsInPeriod.label}
+            value={formatNumber(period.conversations.total)}
+            sub={COUNT_LABELS.conversationsInPeriod.sub}
+          />
+          <Stat
+            variant="inline"
+            label={COUNT_LABELS.leadsInPeriod.label}
+            value={formatNumber(period.leads)}
+            sub={COUNT_LABELS.leadsInPeriod.sub}
+          />
+          <Stat
+            variant="inline"
+            label={COUNT_LABELS.bookingsInPeriod.label}
+            value={formatNumber(period.bookings)}
+            sub={COUNT_LABELS.bookingsInPeriod.sub}
+          />
+        </div>
+        <div className="flex min-w-0 flex-wrap gap-x-8 gap-y-4 border-t border-border pt-4">
+          <Stat variant="inline" label={COUNT_LABELS.outcome.question} value={formatNumber(outcome.question)} />
+          <Stat variant="inline" label={COUNT_LABELS.outcome.lead} value={formatNumber(outcome.lead)} />
+          <Stat variant="inline" label={COUNT_LABELS.outcome.booking} value={formatNumber(outcome.booking)} />
+        </div>
+        <FactList
+          items={[
+            { label: 'Pogovorov od začetka', value: formatNumber(detail.conversations_total) },
             {
               label: 'Zadnji pogovor',
               value: detail.last_conversation_at ? formatRelativeDateTime(detail.last_conversation_at) : 'Še ni pogovorov',
             },
           ]}
         />
-        <div className="min-w-0">
-          <p className="text-sm text-fg-subtle">
-            {inPeriod.total > 0 ? `Izid pogovorov v tem obdobju (${formatNumber(inPeriod.total)})` : 'Izid pogovorov v tem obdobju'}
-          </p>
-          <dl className="mt-1.5 grid grid-cols-3 gap-3">
-            {counts.map((c) => (
-              <div key={c.label} className="min-w-0 rounded border border-border px-3 py-2">
-                <dd className="nums font-display text-xl font-semibold text-fg">{inPeriod.total > 0 ? c.n : MUTED}</dd>
-                <dt className="truncate text-sm text-fg-muted">{c.label}</dt>
-              </div>
-            ))}
-          </dl>
-        </div>
       </CardBody>
     </Card>
   );
 }
 
-const EMAIL_IN_TEXT = /[^\s@<>()]+@[^\s@<>()]+\.[^\s@<>().,;:]+/g;
-
-/**
- * The API's error texts name the recipient of a failed e-mail, and that can be a visitor.
- * The platform admin needs to see that and why a message failed, not whom it was for.
- */
-function hideAddresses(text: string): string {
-  return text.replace(EMAIL_IN_TEXT, '[e-naslov skrit]');
-}
+const ERROR_KIND: Record<AdminErrorLine['kind'], string> = {
+  email: 'E-pošta',
+  source: 'Vir znanja',
+  payment: 'Plačilo',
+};
 
 export function ErrorsCard({ detail }: { detail: AdminAccountDetail }) {
   const { errors } = detail;
@@ -183,13 +211,15 @@ export function ErrorsCard({ detail }: { detail: AdminAccountDetail }) {
         <ul>
           {errors.map((error, i) => (
             <li
-              key={`${error.at}-${i}`}
+              key={`${error.kind}-${error.at ?? 'brez-casa'}-${i}`}
               className="flex min-w-0 flex-col gap-0.5 border-b border-border px-4 py-3 last:border-b-0 sm:flex-row sm:gap-6 sm:px-5"
             >
-              <span className="nums shrink-0 text-sm text-fg-subtle sm:w-44 sm:pt-px">
-                {error.at ? formatDateTime(error.at) : 'Čas ni znan'}
+              {/* The kind is always known; the moment only when the data has a real one. */}
+              <span className="shrink-0 sm:w-44 sm:pt-px">
+                <span className="block text-sm font-medium text-fg-muted">{ERROR_KIND[error.kind]}</span>
+                {error.at ? <span className="nums block text-sm text-fg-subtle">{formatDateTime(error.at)}</span> : null}
               </span>
-              <span className="min-w-0 break-words text-base text-fg">{hideAddresses(error.text)}</span>
+              <span className="min-w-0 break-words text-base text-fg">{error.text}</span>
             </li>
           ))}
         </ul>

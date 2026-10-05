@@ -68,7 +68,7 @@ export function RulesCard({ value, resetKey, onChange }: RulesCardProps) {
         </Field>
         <Field
           label="Najkrajši rok za rezervacijo"
-          hint="Agent ne ponudi terminov, ki so prej kot toliko ur od zdaj."
+          hint="Agent ponudi samo termine, do katerih je še vsaj toliko ur."
           error={errors.min_notice_hours}
         >
           <Input
@@ -82,8 +82,8 @@ export function RulesCard({ value, resetKey, onChange }: RulesCardProps) {
           />
         </Field>
         <Field
-          label="Rezervacija vnaprej"
-          hint="Najdlje toliko dni vnaprej agent ponudi termin."
+          label="Največ dni vnaprej"
+          hint="Agent ponudi termine največ toliko dni vnaprej."
           error={errors.max_days_ahead}
         >
           <Input

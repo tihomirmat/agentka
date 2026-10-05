@@ -11,6 +11,7 @@ import {
   CardHeader,
   ConfirmDialog,
   EmptyState,
+  Notice,
   SkeletonRows,
   StatusPill,
   useToast,
@@ -55,10 +56,10 @@ export function FilesTab({ files, loading, error, reload }: FilesTabProps) {
     setAdding(false);
     setProblems(failed);
     if (added.length === 1) {
-      toast.success(`Datoteka »${added[0]}« je dodana na seznam. Vsebina v predogledu ni naložena.`);
+      toast.success(`Datoteka »${added[0]}« je dodana na seznam. Predogled: vsebina ni naložena.`);
     } else if (added.length > 1) {
       toast.success(
-        `${plural(added.length, ['datoteka je dodana', 'datoteki sta dodani', 'datoteke so dodane', 'datotek je dodanih'])} na seznam. Vsebina v predogledu ni naložena.`,
+        `${plural(added.length, ['datoteka je dodana', 'datoteki sta dodani', 'datoteke so dodane', 'datotek je dodanih'])} na seznam. Predogled: vsebina ni naložena.`,
       );
     }
     if (inputRef.current) inputRef.current.value = '';
@@ -120,21 +121,25 @@ export function FilesTab({ files, loading, error, reload }: FilesTabProps) {
               Izberite datoteko
             </Button>
             <p className="max-w-md text-sm text-fg-subtle">
-              V tem predogledu se vsebina datoteke ne naloži: zabeleži se samo njeno ime.
+              Predogled: vsebina datoteke se ne prebere, zabeleži se samo njeno ime. V polni različici agent prebere
+              tudi vsebino datoteke.
             </p>
           </div>
 
           {problems.length > 0 ? (
-            <div role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
+            <Notice
+              size="sm"
+              tone="danger"
+              title={problems.length === 1 ? 'Datoteke ni bilo mogoče dodati.' : 'Nekaterih datotek ni bilo mogoče dodati.'}
+            >
               <ul className="flex flex-col gap-1">
                 {problems.map((p) => (
-                  <li key={p} className="flex items-start gap-2">
-                    <CircleAlert size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
-                    <span className="min-w-0 break-words">{p}</span>
+                  <li key={p} className="min-w-0 break-words">
+                    {p}
                   </li>
                 ))}
               </ul>
-            </div>
+            </Notice>
           ) : null}
         </CardBody>
 
@@ -212,11 +217,9 @@ export function FilesTab({ files, loading, error, reload }: FilesTabProps) {
         confirmLabel="Odstrani datoteko"
         onConfirm={async () => {
           if (!removing) return;
+          // The row disappears from the list: a toast says it, nothing else.
           const r = await remove.run(removing.id);
-          if (r) {
-            if (r.simulated) toast.info(r.message);
-            else toast.success(r.message);
-          }
+          if (r) toast.success(r.message);
         }}
       />
     </div>

@@ -1,9 +1,8 @@
 import { CircleAlert, Copy } from 'lucide-react';
 import { WEEKDAYS } from '@/data/labels';
 import type { Weekday, WorkingDay, WorkingHours } from '@/data/types';
-import { Button, Card, CardHeader, Input, Switch } from '@/components/ui';
+import { Button, Card, CardHeader, deepEqual, Switch, TimeSelect } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { deepEqual } from '../screen-kit/useDraft';
 import { isValidDay } from './slots';
 
 const WEEKDAY_KEYS = WEEKDAYS.filter((d) => ['tue', 'wed', 'thu', 'fri'].includes(d.key)).map((d) => d.key);
@@ -20,7 +19,7 @@ interface HoursCardProps {
   onChange: (next: WorkingHours) => void;
 }
 
-/** Working hours per weekday: open or closed switch and a from–to time range. */
+/** Working hours per weekday: open or closed switch and a from–to range, always in 24-hour times. */
 export function HoursCard({ hours, onChange }: HoursCardProps) {
   const bad = new Set(invalidDays(hours));
 
@@ -38,8 +37,13 @@ export function HoursCard({ hours, onChange }: HoursCardProps) {
   }
 
   const copyButton = (
-    <Button size="sm" icon={Copy} disabled={alreadyCopied} onClick={copyMonday}>
-      Kopiraj ponedeljek na delovne dni
+    <Button
+      size="sm"
+      icon={Copy}
+      disabledReason={alreadyCopied && 'Torek do petek že imajo enak čas kot ponedeljek.'}
+      onClick={copyMonday}
+    >
+      Uporabi ponedeljkov čas za vse delovne dni
     </Button>
   );
 
@@ -54,60 +58,59 @@ export function HoursCard({ hours, onChange }: HoursCardProps) {
       />
       <div className="border-b border-border px-4 py-3 sm:hidden">{copyButton}</div>
       <ul>
-        {WEEKDAYS.map(({ key, label }) => {
+        {WEEKDAYS.map(({ key, label, short }) => {
           const day = hours[key];
           const invalid = bad.has(key);
-          const errorId = `delovni-cas-${key}-napaka`;
           return (
-            <li
-              key={key}
-              className="grid min-w-0 gap-x-4 gap-y-2 border-b border-border px-4 py-3 last:border-b-0 sm:grid-cols-[13rem_minmax(0,1fr)] sm:items-center sm:px-5"
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <Switch
-                  aria-label={`${label}: ${day.open ? 'odprto' : 'zaprto'}`}
-                  checked={day.open}
-                  onCheckedChange={(open) => setDay(key, { open })}
-                />
-                <span className={cn('text-base font-medium', day.open ? 'text-fg' : 'text-fg-muted')}>{label}</span>
-                <span className="text-sm text-fg-subtle" aria-hidden="true">
-                  {day.open ? 'odprto' : 'zaprto'}
-                </span>
-              </div>
-              <div className="min-w-0">
+            <li key={key} className="border-b border-border px-4 py-2.5 last:border-b-0 sm:px-5">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4">
+                <div className="flex w-20 shrink-0 items-center gap-2.5 sm:w-44 sm:gap-3">
+                  <Switch
+                    aria-label={`${label}: ${day.open ? 'odprto' : 'zaprto'}`}
+                    checked={day.open}
+                    onCheckedChange={(open) => setDay(key, { open })}
+                  />
+                  <span className={cn('text-base font-medium', day.open ? 'text-fg' : 'text-fg-muted')}>
+                    <span className="sm:hidden" aria-hidden="true">
+                      {short}
+                    </span>
+                    <span className="sr-only sm:not-sr-only">{label}</span>
+                  </span>
+                </div>
                 {day.open ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm text-fg-muted">od</span>
-                    <Input
-                      type="time"
-                      aria-label={`${label}, začetek`}
-                      aria-describedby={invalid ? errorId : undefined}
+                  <div className="flex items-center gap-2">
+                    <TimeSelect
+                      aria-label={`${label}: začetek`}
                       aria-invalid={invalid || undefined}
-                      className="w-32"
+                      aria-describedby={invalid ? `hours-${key}-error` : undefined}
                       value={day.from}
-                      onChange={(e) => setDay(key, { from: e.target.value })}
+                      onValueChange={(from) => setDay(key, { from })}
+                      className="w-[6.25rem]"
                     />
-                    <span className="text-sm text-fg-muted">do</span>
-                    <Input
-                      type="time"
-                      aria-label={`${label}, konec`}
-                      aria-describedby={invalid ? errorId : undefined}
+                    <span aria-hidden="true" className="text-fg-subtle">
+                      –
+                    </span>
+                    <TimeSelect
+                      aria-label={`${label}: konec`}
                       aria-invalid={invalid || undefined}
-                      className="w-32"
+                      aria-describedby={invalid ? `hours-${key}-error` : undefined}
                       value={day.to}
-                      onChange={(e) => setDay(key, { to: e.target.value })}
+                      onValueChange={(to) => setDay(key, { to })}
+                      className="w-[6.25rem]"
                     />
                   </div>
                 ) : (
-                  <p className="text-sm text-fg-subtle">Agent ta dan ne ponuja terminov.</p>
+                  <span className="text-sm text-fg-subtle">Zaprto</span>
                 )}
-                {invalid ? (
-                  <p id={errorId} className="mt-1.5 flex items-start gap-1.5 text-sm text-danger">
-                    <CircleAlert size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
-                    <span>Konec mora biti po začetku. Primer: od 08:00 do 16:00.</span>
-                  </p>
-                ) : null}
               </div>
+              {invalid ? (
+                <p id={`hours-${key}-error`} role="alert" className="mt-1.5 flex items-start gap-1.5 text-sm text-danger">
+                  <CircleAlert size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
+                  <span>
+                    {label}: začetek mora biti pred koncem. Primer: od 08:00 do 16:00.
+                  </span>
+                </p>
+              ) : null}
             </li>
           );
         })}

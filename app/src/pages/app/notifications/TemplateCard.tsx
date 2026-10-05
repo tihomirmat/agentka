@@ -1,13 +1,13 @@
 import { useRef, useState } from 'react';
-import { CircleAlert, RotateCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import {
   Button,
   Card,
   CardBody,
   CardHeader,
   ConfirmDialog,
+  FactList,
   Field,
-  Input,
   StatusPill,
   Switch,
   Textarea,
@@ -27,6 +27,8 @@ interface TemplateCardProps {
   variables: string[];
   /** header lines of the preview */
   subject: string;
+  /** one sentence under the subject: who decides it and whether the conversation's topic is in it */
+  subjectNote: string;
   from: string;
   to: string | null;
   /** shown instead of the address when there is none */
@@ -48,6 +50,7 @@ export function TemplateCard({
   defaultValue,
   variables,
   subject,
+  subjectNote,
   from,
   to,
   toMissing,
@@ -91,22 +94,22 @@ export function TemplateCard({
       />
       <CardBody className="grid min-w-0 gap-6 pt-5 lg:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-4">
-          <Field label="Zadeva" hint="Zadeva je pri vseh sporočilih enaka in je ne morete spremeniti.">
-            <Input readOnly value={subject} />
-          </Field>
+          {/* The subject cannot be edited, so it is text, not a greyed-out field that invites a click. */}
+          <div className="min-w-0">
+            <FactList columns={1} items={[{ label: 'Zadeva', value: subject }]} />
+            <p className="mt-1 text-sm text-fg-subtle">{subjectNote}</p>
+          </div>
 
-          <Field label="Besedilo sporočila">
+          <Field
+            label="Besedilo sporočila"
+            warning={
+              unknown.length > 0
+                ? `Neznana spremenljivka ${unknown.map((u) => `{{${u}}}`).join(', ')}: v sporočilu bo ostala nespremenjena.`
+                : undefined
+            }
+          >
             <Textarea ref={areaRef} rows={13} value={value} onChange={(e) => onChange(e.target.value)} />
           </Field>
-
-          {unknown.length > 0 ? (
-            <p role="status" className="flex items-start gap-1.5 text-sm text-warning">
-              <CircleAlert size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
-              <span>
-                Neznana spremenljivka {unknown.map((u) => `{{${u}}}`).join(', ')}: v sporočilu bo ostala nespremenjena.
-              </span>
-            </p>
-          ) : null}
 
           <div>
             <p className="text-sm font-medium text-fg">Spremenljivke</p>

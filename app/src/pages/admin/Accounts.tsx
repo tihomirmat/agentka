@@ -1,17 +1,16 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, CircleAlert, Search, SearchX } from 'lucide-react';
+import { Building2, CircleAlert, SearchX } from 'lucide-react';
 import {
   Badge,
   Button,
   Card,
   CardHeader,
-  Checkbox,
   EmptyState,
-  Input,
+  FilterChips,
   PageHeader,
   ProgressBar,
-  Select,
+  SearchField,
   Skeleton,
   SkeletonRows,
   Stat,
@@ -22,6 +21,7 @@ import {
   TH,
   THead,
   TR,
+  useTableStacked,
 } from '@/components/ui';
 import * as api from '@/data/api';
 import {
@@ -32,15 +32,27 @@ import {
   formatUrl,
   plural,
 } from '@/data/format';
-import { ACCOUNT_STATUS, AGENT_STATUS } from '@/data/labels';
-import { ACCOUNT_FORMS, ERROR_FORMS, needsAttention, STATUS_ORDER } from './accounts/helpers';
+import { ACCOUNT_STATUS, AGENT_STATUS, PAUSED_BY_ADMIN, TRIAL } from '@/data/labels';
+import {
+  ACCOUNT_FORMS,
+  ACCOUNT_FORMS_OF,
+  ERROR_FORMS,
+  formIndex,
+  needsAttention,
+  STATUS_ORDER,
+} from './accounts/helpers';
 
-type StatusFilter = 'all' | api.AccountStatus;
+/** One filter, one word per state: the chips use the words the rows show. */
+type Filter = 'all' | 'attention' | api.AccountStatus;
 
-const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
-  { value: 'all', label: 'Vsa stanja naročnine' },
-  ...STATUS_ORDER.map((s) => ({ value: s, label: ACCOUNT_STATUS[s].label })),
-];
+/** "Pozornost potrebujeta 2 uporabniška računa. Najdete ju na vrhu seznama." */
+function attentionSentence(n: number): string {
+  if (n === 0) return 'Noben uporabniški račun ne potrebuje pozornosti.';
+  const i = formIndex(n);
+  const verb = ['potrebuje', 'potrebujeta', 'potrebujejo', 'potrebuje'][i];
+  const it = ['ga', 'ju', 'jih', 'jih'][i];
+  return `Pozornost ${verb} ${plural(n, ACCOUNT_FORMS)}. Najdete ${it} na vrhu seznama.`;
+}
 
 function StatsRow({ rows }: { rows: api.AdminAccountRow[] }) {
   const count = (status: api.AccountStatus) => rows.filter((r) => r.account.status === status).length;
@@ -59,9 +71,9 @@ function StatsRow({ rows }: { rows: api.AdminAccountRow[] }) {
         sub={`Potrebujejo pozornost: ${attention}`}
       />
       <Stat label="Aktivne naročnine" value={formatNumber(count('active'))} />
-      <Stat label="Poskusno obdobje" value={formatNumber(count('trial'))} />
-      <Stat label="Zapadlo plačilo" value={formatNumber(count('past_due'))} />
-      <Stat label="Minute ta mesec" value={formatNumber(Math.round(used))} unit={`/ ${formatNumber(included)} min`} sub="skupaj za vse stranke" />
+      <Stat label={TRIAL.name} value={formatNumber(count('trial'))} />
+      <Stat label={ACCOUNT_STATUS.past_due.label} value={formatNumber(count('past_due'))} />
+      <Stat label="Minute v tem obdobju" value={formatNumber(Math.round(used))} unit={`/ ${formatNumber(included)} min`} sub="skupaj za vse stranke" />
       <Stat className="col-span-2 sm:col-span-1" label="Strošek (ocena)" value={formatEur(cost)} sub="ocena po porabljenih minutah" />
     </div>
   );
@@ -80,11 +92,41 @@ function StatsSkeleton() {
   );
 }
 
+/**
+ * Company name (a link to the detail) and its website. On a phone it is the title of the row's
+ * card. Both may wrap anywhere, so this column gives way before the table has to scroll sideways.
+ */
+function CompanyCell({ account }: { account: api.Account }) {
+  return (
+    <div className="min-w-[8rem] [overflow-wrap:anywhere]">
+      <Link
+        to={`/admin/racuni/${account.id}`}
+        className="block rounded font-medium text-fg hover:text-accent hover:underline"
+      >
+        {account.name}
+      </Link>
+      <span className="block text-sm font-normal text-fg-muted">{formatUrl(account.website_url) || 'Brez spletne strani'}</span>
+    </div>
+  );
+}
+
+/** The agent's state; a paused agent also says who holds it, so no row needs a click to be understood. */
+function AgentCell({ row }: { row: api.AdminAccountRow }) {
+  const stacked = useTableStacked();
+  const agent = AGENT_STATUS[row.agent_status];
+  const heldBy = row.agent_status === 'paused' ? row.agent_paused_by : null;
+  return (
+    <div className={stacked ? 'flex min-w-0 flex-col items-end gap-1' : 'flex min-w-0 flex-col items-start gap-1'}>
+      <StatusPill tone={agent.tone}>{agent.label}</StatusPill>
+      {heldBy ? <span className="max-w-[11rem] text-sm text-fg-muted">{PAUSED_BY_ADMIN[heldBy].label}</span> : null}
+    </div>
+  );
+}
+
 export default function Accounts() {
   const accounts = api.useQuery(() => api.adminListAccounts(), []);
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<StatusFilter>('all');
-  const [attentionOnly, setAttentionOnly] = useState(false);
+  const [filter, setFilter] = useState<Filter>('all');
 
   const rows = accounts.data;
   const attentionCount = rows?.filter(needsAttention).length ?? 0;
@@ -94,8 +136,8 @@ export default function Accounts() {
     const q = search.trim().toLowerCase();
     return rows
       .filter((r) => {
-        if (status !== 'all' && r.account.status !== status) return false;
-        if (attentionOnly && !needsAttention(r)) return false;
+        if (filter === 'attention' && !needsAttention(r)) return false;
+        if (filter !== 'all' && filter !== 'attention' && r.account.status !== filter) return false;
         if (!q) return true;
         return r.account.name.toLowerCase().includes(q) || formatUrl(r.account.website_url).toLowerCase().includes(q);
       })
@@ -103,17 +145,19 @@ export default function Accounts() {
         const byAttention = Number(needsAttention(b)) - Number(needsAttention(a));
         return byAttention !== 0 ? byAttention : a.account.name.localeCompare(b.account.name, 'sl');
       });
-  }, [rows, search, status, attentionOnly]);
+  }, [rows, search, filter]);
 
-  const filtered = search.trim() !== '' || status !== 'all' || attentionOnly;
+  const filtered = search.trim() !== '' || filter !== 'all';
   const clearFilters = () => {
     setSearch('');
-    setStatus('all');
-    setAttentionOnly(false);
+    setFilter('all');
   };
 
   const header = (
-    <PageHeader title="Računi" description="Vsi uporabniški računi strank na platformi: paket, poraba minut in napake." />
+    <PageHeader
+      title="Uporabniški računi"
+      description="Vsi uporabniški računi strank na platformi: paket, poraba minut in napake."
+    />
   );
 
   if (accounts.loading) {
@@ -143,48 +187,39 @@ export default function Accounts() {
     );
   }
 
+  const chips: { value: Filter; label: string; count: number }[] = [
+    { value: 'all', label: 'Vsi', count: rows.length },
+    { value: 'attention', label: 'Potrebujejo pozornost', count: attentionCount },
+    ...STATUS_ORDER.map((s) => ({
+      value: s as Filter,
+      label: ACCOUNT_STATUS[s].label,
+      count: rows.filter((r) => r.account.status === s).length,
+    })).filter((c) => c.count > 0 || c.value === filter),
+  ];
+
   return (
     <>
       {header}
       <StatsRow rows={rows} />
 
       <Card>
-        <CardHeader
-          title="Uporabniški računi"
-          description={
-            attentionCount > 0
-              ? `${plural(attentionCount, ['uporabniški račun potrebuje', 'uporabniška računa potrebujeta', 'uporabniški računi potrebujejo', 'uporabniških računov potrebuje'])} pozornost. Ti so na vrhu seznama.`
-              : 'Noben uporabniški račun ne potrebuje pozornosti.'
-          }
-          divider={false}
-        />
+        <CardHeader title="Seznam" description={attentionSentence(attentionCount)} divider={false} />
         {rows.length > 0 ? (
-          <div className="grid min-w-0 items-center gap-x-4 gap-y-3 border-b border-border px-4 pb-4 sm:px-5 md:grid-cols-[minmax(0,1fr)_15rem_auto]">
-            <Input
-              type="search"
-              aria-label="Išči po imenu podjetja ali spletni strani"
-              placeholder="Išči po imenu ali spletni strani"
-              prefix={<Search size={16} aria-hidden="true" />}
+          <div className="flex min-w-0 flex-col gap-3 border-b border-border px-4 pb-4 sm:px-5">
+            <SearchField
+              label="Iskanje po uporabniških računih"
+              placeholder="Ime podjetja ali spletna stran"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              autoComplete="off"
+              onChange={setSearch}
+              className="w-full md:max-w-sm"
             />
-            <Select<StatusFilter>
-              aria-label="Filter po stanju naročnine"
-              value={status}
-              options={FILTER_OPTIONS}
-              onValueChange={setStatus}
-            />
-            <Checkbox
-              label={`Potrebujejo pozornost (${attentionCount})`}
-              checked={attentionOnly}
-              onChange={(e) => setAttentionOnly(e.target.checked)}
-            />
+            <FilterChips label="Stanje uporabniškega računa" value={filter} onChange={setFilter} options={chips} />
           </div>
         ) : null}
 
         <Table
           minWidth={980}
+          stackBelow={980}
           caption="Uporabniški računi strank"
           empty={
             rows.length === 0 ? (
@@ -204,7 +239,7 @@ export default function Accounts() {
               <TH>Paket</TH>
               <TH>Naročnina</TH>
               <TH>Agent</TH>
-              <TH>Minute ta mesec</TH>
+              <TH className="whitespace-normal">Minute v tem obdobju</TH>
               <TH>Zadnji pogovor</TH>
               <TH>Napake</TH>
             </TR>
@@ -213,43 +248,38 @@ export default function Accounts() {
             {visible.map((row) => {
               const { account } = row;
               const sub = ACCOUNT_STATUS[account.status];
-              const agent = AGENT_STATUS[row.agent_status];
               return (
                 <TR key={account.id} interactive>
-                  <TD className="max-w-[14rem]">
-                    <Link
-                      to={`/admin/racuni/${account.id}`}
-                      className="block truncate rounded font-medium text-fg hover:text-accent hover:underline"
-                    >
-                      {account.name}
-                    </Link>
-                    <span className="block truncate text-sm text-fg-muted">{formatUrl(account.website_url) || 'Brez spletne strani'}</span>
+                  <TD>
+                    <CompanyCell account={account} />
                   </TD>
-                  <TD nowrap>
+                  <TD nowrap label="Paket">
                     {row.plan ? <Badge tone="accent">{row.plan.name}</Badge> : <span className="text-fg-subtle">Brez paketa</span>}
                   </TD>
-                  <TD>
+                  <TD label="Naročnina">
                     <StatusPill tone={sub.tone}>{sub.label}</StatusPill>
                   </TD>
-                  <TD>
-                    <StatusPill tone={agent.tone}>{agent.label}</StatusPill>
+                  <TD label="Agent">
+                    <AgentCell row={row} />
                   </TD>
-                  <TD className="w-40">
-                    <span className="nums block whitespace-nowrap text-sm text-fg">
-                      {formatMinutesOf(account.minutes_used, account.minutes_included)}
-                    </span>
-                    <ProgressBar
-                      size="sm"
-                      className="mt-1.5"
-                      label={`Porabljene minute: ${account.name}`}
-                      value={account.minutes_used}
-                      max={account.minutes_included}
-                    />
+                  <TD label="Minute v tem obdobju">
+                    <div className="w-28 max-w-full">
+                      <span className="nums block whitespace-nowrap text-sm text-fg">
+                        {formatMinutesOf(account.minutes_used, account.minutes_included)}
+                      </span>
+                      <ProgressBar
+                        size="sm"
+                        className="mt-1.5"
+                        label={`Porabljene minute: ${account.name}`}
+                        value={account.minutes_used}
+                        max={account.minutes_included}
+                      />
+                    </div>
                   </TD>
-                  <TD nowrap muted>
-                    {row.last_conversation_at ? formatRelativeDateTime(row.last_conversation_at) : 'Še ni pogovorov'}
+                  <TD muted label="Zadnji pogovor">
+                    {row.last_conversation_at ? formatRelativeDateTime(row.last_conversation_at).replace(' ob ', ' ob\u00a0') : 'Še ni pogovorov'}
                   </TD>
-                  <TD>
+                  <TD label="Napake">
                     {row.error_count > 0 ? (
                       <StatusPill tone="danger">{plural(row.error_count, ERROR_FORMS)}</StatusPill>
                     ) : (
@@ -263,7 +293,7 @@ export default function Accounts() {
         </Table>
       </Card>
       <p className="mt-3 text-sm text-fg-subtle">
-        {`Prikazano: ${plural(visible.length, ACCOUNT_FORMS)} od ${formatNumber(rows.length)}.`}
+        {`Prikazano: ${formatNumber(visible.length)} od ${plural(rows.length, ACCOUNT_FORMS_OF)}.`}
       </p>
     </>
   );

@@ -10,18 +10,25 @@ import {
   ConfirmDialog,
   CopyValue,
   EmptyState,
+  Notice,
   PageHeader,
   Skeleton,
   SkeletonRows,
   StatusPill,
+  useContainerWidth,
   useToast,
 } from '@/components/ui';
 import * as api from '@/data/api';
-import { formatTime, plural } from '@/data/format';
+import {
+  formatClockRange,
+  formatTime,
+  formatWeekdayDate,
+  minutesBetween,
+  nearDayHint,
+  plural,
+} from '@/data/format';
 import { BOOKING_MODE, BOOKING_STATUS } from '@/data/labels';
 import { cn } from '@/lib/cn';
-import { formatClockRange, formatWeekdayDate, minutesBetween, nearDayHint } from './inbox/dates';
-import { useContainerWidth } from './inbox/useContainerWidth';
 
 /** How many past or cancelled bookings are listed before "Pokaži več". */
 const PAST_VISIBLE = 10;
@@ -29,7 +36,7 @@ const PAST_VISIBLE = 10;
 const ROW_MIN_WIDTH = 860;
 
 const LINK =
-  'inline-flex items-center gap-1 rounded text-sm font-medium text-accent underline-offset-2 hover:text-accent-hover hover:underline';
+  'tap inline-flex items-center gap-1 rounded text-sm font-medium text-accent underline-offset-2 hover:text-accent-hover hover:underline';
 
 const TERMINI = ['termin', 'termina', 'termini', 'terminov'] as [string, string, string, string];
 const TERMINI_WAITING = ['termin čaka', 'termina čakata', 'termini čakajo', 'terminov čaka'] as [
@@ -47,11 +54,13 @@ interface RowProps {
   upcoming: boolean;
   wide: boolean;
   busy: boolean;
+  /** what the last action on this booking answered; stays until the page is left */
+  result: api.ActionResult | undefined;
   onConfirm: (booking: api.Booking) => void;
   onAskCancel: (booking: api.Booking) => void;
 }
 
-function BookingRow({ booking: b, upcoming, wide, busy, onConfirm, onAskCancel }: RowProps) {
+function BookingRow({ booking: b, upcoming, wide, busy, result, onConfirm, onAskCancel }: RowProps) {
   const status = BOOKING_STATUS[b.status];
   const waiting = upcoming && b.status === 'requested';
   const cancelled = b.status === 'cancelled';
@@ -96,11 +105,11 @@ function BookingRow({ booking: b, upcoming, wide, busy, onConfirm, onAskCancel }
     <div className={cn('flex flex-wrap items-center gap-2', wide && 'justify-end')}>
       {waiting ? (
         <>
-          <Button size="sm" variant="secondary" icon={Check} loading={busy} onClick={() => onConfirm(b)}>
+          <Button size="sm" variant="primary" icon={Check} loading={busy} onClick={() => onConfirm(b)}>
             Potrdi termin
           </Button>
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => onAskCancel(b)}>
-            Zavrni
+            Zavrni termin
           </Button>
         </>
       ) : upcoming && b.status === 'confirmed' ? (
@@ -119,15 +128,24 @@ function BookingRow({ booking: b, upcoming, wide, busy, onConfirm, onAskCancel }
   // A booking that waits for the owner is tinted: it is the one thing on this page to act on.
   const tint = waiting ? 'bg-warning-soft' : '';
 
+  // What an action did outside the page (e-mail to the visitor, calendar) is only simulated; the
+  // sentence stays in the row of that booking and is not repeated as a toast.
+  const note = result ? (
+    <Notice size="sm" tone={result.simulated ? 'neutral' : 'success'}>
+      {result.message}
+    </Notice>
+  ) : null;
+
   if (wide) {
     return (
-      <li className={cn('grid grid-cols-[13rem_minmax(0,1fr)_auto] items-start gap-6 px-5 py-4', tint)}>
+      <li className={cn('grid grid-cols-[13rem_minmax(0,1fr)_auto] items-start gap-x-6 gap-y-3 px-5 py-4', tint)}>
         {when}
         {who}
         <div className="flex min-w-0 flex-col items-end gap-3">
           {state}
           {actions}
         </div>
+        {note ? <div className="col-span-3">{note}</div> : null}
       </li>
     );
   }
@@ -139,6 +157,7 @@ function BookingRow({ booking: b, upcoming, wide, busy, onConfirm, onAskCancel }
       </div>
       {who}
       {actions}
+      {note}
     </li>
   );
 }
@@ -171,11 +190,20 @@ function Section({
 
 function cancelDescription(b: api.Booking): ReactNode {
   const when = `${formatWeekdayDate(b.start)} ob ${formatTime(b.start)}`;
+  const inCalendar = Boolean(b.calendar_event_id);
+  if (b.status === 'requested') {
+    return (
+      <>
+        Povpraševanje za termin {when} bo zavrnjeno. V polni različici obiskovalec na {b.customer_email} prejme e-pošto,
+        da termin ni mogoč. V predogledu se ne pošlje nič.
+      </>
+    );
+  }
   return (
     <>
-      Termin {when} bo odpovedan. Obiskovalcu na {b.customer_email} sporočimo, da je termin odpovedan
-      {b.calendar_event_id ? ', dogodek v koledarju pa izbrišemo' : ''}. V predogledu se to samo simulira: sporočilo se
-      ne pošlje{b.calendar_event_id ? ' in dogodek v koledarju ostane' : ''}.
+      Termin {when} bo odpovedan. V polni različici obiskovalec na {b.customer_email} prejme e-pošto z obvestilom
+      {inCalendar ? ', dogodek v koledarju pa se izbriše' : ''}. V predogledu se ne pošlje nič
+      {inCalendar ? ' in dogodek v koledarju ostane' : ''}.
     </>
   );
 }
@@ -190,41 +218,49 @@ export default function Bookings() {
   const cancel = api.useAction(api.cancelBooking, { onError: (message) => toast.error(message) });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toCancel, setToCancel] = useState<api.Booking | null>(null);
+  // The last answer for each booking, shown inside its row until the person leaves the page.
+  const [results, setResults] = useState<Record<string, api.ActionResult>>({});
+  // A booking that was just answered keeps its place (list and position) until the page is left,
+  // so its answer stays where the person clicked instead of moving out of sight with the row.
+  const [placed, setPlaced] = useState<Record<string, api.BookingStatus>>({});
   const [showAllPast, setShowAllPast] = useState(false);
   const [boxRef, boxWidth] = useContainerWidth();
   const wide = boxWidth >= ROW_MIN_WIDTH;
 
-  function notify(result: api.ActionResult) {
-    if (result.simulated) toast.info(result.message);
-    else toast.success(result.message);
-  }
+  const keepPlace = (b: api.Booking) => setPlaced((prev) => (prev[b.id] ? prev : { ...prev, [b.id]: b.status }));
 
   async function handleConfirm(b: api.Booking) {
+    keepPlace(b);
     setBusyId(b.id);
     const result = await confirm.run(b.id);
     setBusyId(null);
-    if (result) notify(result);
+    if (result) setResults((prev) => ({ ...prev, [b.id]: result }));
   }
 
   async function handleCancel() {
     if (!toCancel) return;
-    const result = await cancel.run(toCancel.id);
-    if (result) notify(result);
+    const id = toCancel.id;
+    keepPlace(toCancel);
+    const result = await cancel.run(id);
+    if (result) setResults((prev) => ({ ...prev, [id]: result }));
   }
 
   const now = new Date().toISOString();
   const list = bookings.data ?? [];
+  const placeOf = (b: api.Booking) => placed[b.id] ?? b.status;
   const upcoming = list
-    .filter((b) => b.status !== 'cancelled' && b.start >= now)
+    .filter((b) => placeOf(b) !== 'cancelled' && b.start >= now)
     .sort((a, b) => {
-      const aw = a.status === 'requested' ? 0 : 1;
-      const bw = b.status === 'requested' ? 0 : 1;
+      const aw = placeOf(a) === 'requested' ? 0 : 1;
+      const bw = placeOf(b) === 'requested' ? 0 : 1;
       return aw - bw || a.start.localeCompare(b.start);
     });
   const past = list
-    .filter((b) => b.status === 'cancelled' || b.start < now)
+    .filter((b) => placeOf(b) === 'cancelled' || b.start < now)
     .sort((a, b) => b.start.localeCompare(a.start));
   const pastShown = showAllPast ? past : past.slice(0, PAST_VISIBLE);
+  // The numbers in the headings follow what the bookings are now, not where they are drawn.
+  const openCount = upcoming.filter((b) => b.status !== 'cancelled').length;
   const waitingCount = upcoming.filter((b) => b.status === 'requested').length;
 
   const mode = settings.data ? BOOKING_MODE[settings.data.mode] : null;
@@ -258,10 +294,12 @@ export default function Bookings() {
           label="Prihajajoči termini"
           title="Prihajajoče"
           description={
-            upcoming.length === 0
+            openCount === 0
               ? undefined
-              : `${plural(upcoming.length, TERMINI)}${
-                  waitingCount > 0 ? ` · ${plural(waitingCount, TERMINI_WAITING)} na vašo potrditev` : ''
+              : `${plural(openCount, TERMINI)}${
+                  waitingCount > 0
+                    ? ` · ${plural(waitingCount, TERMINI_WAITING)} na vašo potrditev. Termini, ki čakajo na potrditev, so na vrhu`
+                    : ''
                 }.`
           }
         >
@@ -285,6 +323,7 @@ export default function Bookings() {
                   upcoming
                   wide={wide}
                   busy={confirm.pending && busyId === b.id}
+                  result={results[b.id]}
                   onConfirm={handleConfirm}
                   onAskCancel={setToCancel}
                 />
@@ -294,8 +333,8 @@ export default function Bookings() {
         </Section>
 
         <Section
-          label="Pretekle in preklicane rezervacije"
-          title="Pretekle in preklicane"
+          label="Pretekli in odpovedani termini"
+          title="Pretekli in odpovedani termini"
           description={past.length > 0 ? `${plural(past.length, TERMINI)}. Najnovejši je na vrhu.` : undefined}
           footer={
             past.length > PAST_VISIBLE ? (
@@ -308,7 +347,7 @@ export default function Bookings() {
           }
         >
           {past.length === 0 ? (
-            <EmptyState compact icon={History} title="Preteklih in preklicanih terminov še ni." />
+            <EmptyState compact icon={History} title="Preteklih in odpovedanih terminov še ni." />
           ) : (
             <ul className="divide-y divide-border">
               {pastShown.map((b) => (
@@ -318,6 +357,7 @@ export default function Bookings() {
                   upcoming={false}
                   wide={wide}
                   busy={false}
+                  result={results[b.id]}
                   onConfirm={handleConfirm}
                   onAskCancel={setToCancel}
                 />
@@ -341,15 +381,19 @@ export default function Bookings() {
           <Skeleton className="h-4 w-2/3" />
         </Card>
       ) : mode ? (
-        <Card tone="quiet" className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm text-fg-muted">
-          <CalendarClock size={16} className="shrink-0 text-fg-subtle" aria-hidden="true" />
-          <p className="min-w-0 flex-1 basis-64">
-            Način rezervacije: <span className="font-medium text-fg">{mode.label}</span>. {mode.description}
-          </p>
-          <Link to="/app/termini" className={LINK}>
-            Spremeni v Terminih
-          </Link>
-        </Card>
+        <Notice
+          tone="neutral"
+          live={false}
+          className="mb-6"
+          title={`Način dogovarjanja terminov: ${mode.label}`}
+          action={
+            <Link to="/app/termini" className={LINK}>
+              Spremeni v Terminih
+            </Link>
+          }
+        >
+          {mode.description}
+        </Notice>
       ) : null}
       {body}
       <ConfirmDialog

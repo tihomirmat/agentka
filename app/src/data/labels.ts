@@ -52,6 +52,21 @@ export const AGENT_STATUS_HELP: Record<AgentStatus, string> = {
     'Agent zaradi napake ne more odgovarjati. Pripomoček obiskovalcem pove, da pomočnik trenutno ni na voljo.',
 };
 
+/**
+ * The same four sentences for the PLATFORM ADMIN, who is not the owner: third person, about
+ * "the agent of this account" (the customer texts above say "vaše spletne strani"). Used in
+ * src/pages/admin/** only.
+ */
+export const AGENT_STATUS_HELP_ADMIN: Record<AgentStatus, string> = {
+  draft:
+    'Agent tega uporabniškega računa še ni vklopljen. Obiskovalci njegove spletne strani pripomočka ne vidijo, dokler agenta ne vklopi lastnik.',
+  active: 'Agent tega uporabniškega računa odgovarja obiskovalcem na spletni strani, kjer je nameščen pripomoček.',
+  paused:
+    'Agent tega uporabniškega računa ne sprejema pogovorov. Pripomoček obiskovalcem pove, da pomočnik trenutno ni na voljo.',
+  error:
+    'Agent tega uporabniškega računa zaradi napake ne more odgovarjati. Pripomoček obiskovalcem pove, da pomočnik trenutno ni na voljo.',
+};
+
 /** The state with its noun, for places where the pill stands alone: "Agent: aktiven". */
 export function agentStatusText(status: AgentStatus): string {
   return `Agent: ${AGENT_STATUS[status].label.toLowerCase()}`;
@@ -77,6 +92,43 @@ export const PAUSED_BY: Record<PausedBy, { label: string; help: string }> = {
   customer: {
     label: 'Ustavili ste ga sami',
     help: 'Agenta ste začasno ustavili sami. Znova ga vklopite v Nastavitvah.',
+  },
+};
+
+/**
+ * `PAUSED_BY[reason].help` for the place where it is shown. On Nastavitve itself the customer's
+ * own pause must not send the person "v Nastavitvah" — they are there — so it names the button.
+ * Everywhere else (Pregled, the tooltip in the top bar) it is the plain `PAUSED_BY` text.
+ */
+export function pausedByHelp(reason: PausedBy, place?: 'settings'): string {
+  if (reason === 'customer' && place === 'settings') {
+    return 'Agenta ste začasno ustavili sami. Znova ga vklopite z gumbom »Znova vklopi agenta«.';
+  }
+  return PAUSED_BY[reason].help;
+}
+
+/**
+ * The same four reasons for the PLATFORM ADMIN (src/pages/admin/** and the admin api): third
+ * person, nothing that speaks to the owner ("Ustavili ste ga sami"). `help` says what ends the
+ * pause. Lifting one reason never lifts another; only the platform admin's own pause can be
+ * lifted from the admin area.
+ */
+export const PAUSED_BY_ADMIN: Record<PausedBy, { label: string; help: string }> = {
+  payment: {
+    label: PAUSED_BY.payment.label,
+    help: 'Agent tega uporabniškega računa se znova vklopi, ko stranka uredi plačilo. Skrbnik tega ne more odpraviti.',
+  },
+  limit: {
+    label: PAUSED_BY.limit.label,
+    help: 'Agent tega uporabniškega računa se znova vklopi, ko stranka izbere večji paket ali ko se začne novo obračunsko obdobje. Skrbnik tega ne more odpraviti.',
+  },
+  admin: {
+    label: PAUSED_BY.admin.label,
+    help: 'Agenta tega uporabniškega računa je ustavil skrbnik platforme. Znova ga lahko vklopi samo skrbnik.',
+  },
+  customer: {
+    label: 'Ustavila ga je stranka',
+    help: 'Agenta tega uporabniškega računa je ustavila stranka sama. Znova ga lahko vklopi samo stranka.',
   },
 };
 
@@ -170,10 +222,14 @@ export const EMAIL_KIND_PUBLIC: Record<EmailKind, string> = {
   test: 'Testno sporočilo',
 };
 
-/** Knowledge sources: the one wording for "not read yet" (after "Zadnja sinhronizacija: …"). */
+/**
+ * Knowledge sources: the one wording for the last time the pages were read, and for "not read
+ * yet" (after "Zadnje branje: …"). The button that does it is "Preberi strani znova"; the
+ * word "sinhronizacija" is never shown to a person. The name SYNC_WORDS is only an identifier.
+ */
 export const SYNC_WORDS = {
-  lastLabel: 'Zadnja sinhronizacija',
-  never: 'še ni bila opravljena',
+  lastLabel: 'Zadnje branje',
+  never: 'še ni bilo opravljeno',
 } as const;
 
 /**

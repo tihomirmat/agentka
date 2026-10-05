@@ -1,4 +1,3 @@
-import { TriangleAlert } from 'lucide-react';
 import { Card, CardBody, CardHeader, Field, Input } from '@/components/ui';
 import { domainError, normalizeDomain } from './helpers';
 
@@ -9,7 +8,7 @@ interface DomainCardProps {
   onChange: (domain: string) => void;
 }
 
-/** The one website the widget is allowed to run on. */
+/** The one website the widget is meant to run on. */
 export function DomainCard({ value, saved, onChange }: DomainCardProps) {
   const error = domainError(value);
   const leaving = saved && value !== saved && !error;
@@ -20,11 +19,16 @@ export function DomainCard({ value, saved, onChange }: DomainCardProps) {
         title="Dovoljena domena"
         description="Naslov spletne strani, na kateri bo pripomoček deloval."
       />
-      <CardBody className="flex flex-col gap-4">
+      <CardBody>
         <Field
           label="Domena"
           error={error}
-          hint="Pripomoček deluje samo na tej domeni, zato vaših minut ne more uporabljati nihče drug."
+          hint="Pripomoček bo deloval samo na tej domeni."
+          warning={
+            leaving
+              ? `Ko shranite, bo pripomoček deloval samo na novi domeni, na »${saved}« ne več. Koda na spletni strani ostane enaka.`
+              : undefined
+          }
         >
           <Input
             mono
@@ -37,14 +41,6 @@ export function DomainCard({ value, saved, onChange }: DomainCardProps) {
             onChange={(e) => onChange(normalizeDomain(e.target.value))}
           />
         </Field>
-        {leaving ? (
-          <p role="status" className="flex items-start gap-1.5 text-sm text-warning">
-            <TriangleAlert size={14} className="mt-[3px] shrink-0" aria-hidden="true" />
-            <span>
-              Ko shranite, pripomoček na »{saved}« ne bo več deloval. Koda na spletni strani ostane enaka.
-            </span>
-          </p>
-        ) : null}
       </CardBody>
     </Card>
   );

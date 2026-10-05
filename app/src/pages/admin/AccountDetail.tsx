@@ -10,6 +10,7 @@ import {
   ConfirmDialog,
   CopyValue,
   EmptyState,
+  Notice,
   PageHeader,
   SkeletonText,
   StatusPill,
@@ -17,7 +18,7 @@ import {
 } from '@/components/ui';
 import * as api from '@/data/api';
 import { formatUrl, plural } from '@/data/format';
-import { ACCOUNT_STATUS, AGENT_STATUS } from '@/data/labels';
+import { ACCOUNT_STATUS, AGENT_STATUS, agentStatusText, PAUSED_BY_ADMIN } from '@/data/labels';
 import { ActivityCard, AgentCard, ErrorsCard, KnowledgeCard, SubscriptionCard } from './accounts/DetailCards';
 import { ERROR_FORMS } from './accounts/helpers';
 
@@ -29,6 +30,8 @@ export default function AccountDetail() {
   const query = api.useQuery(() => api.adminGetAccount(id), [id]);
   const setPaused = api.useAction(api.adminSetPaused, { onError: (m) => toast.error(m) });
   const [confirm, setConfirm] = useState<'pause' | 'resume' | null>(null);
+  /** the api's sentence after a pause or resume: a simulated outside action, one notice, no toast */
+  const [note, setNote] = useState<string | null>(null);
 
   if (query.loading) {
     return (
@@ -82,8 +85,32 @@ export default function AccountDetail() {
   const sub = ACCOUNT_STATUS[account.status];
   const agent = AGENT_STATUS[detail.agent_status];
   const paused = detail.agent_status === 'paused';
+  // The platform admin can lift ONE pause: their own. A pause for a failed payment, used-up
+  // minutes or by the customer is lifted by whoever caused it, so no button is offered for it.
+  const heldBy = paused ? detail.agent_paused_by : null;
+  const canResume = heldBy === 'admin';
   const canPause = detail.agent_status === 'active' || detail.agent_status === 'error';
-  const subscriptionHeld = account.status === 'past_due' || account.status === 'paused_limit';
+
+  const actions = canResume ? (
+    <Button variant="primary" icon={Play} onClick={() => setConfirm('resume')}>
+      Znova vklopi agenta
+    </Button>
+  ) : canPause ? (
+    <Button icon={Pause} onClick={() => setConfirm('pause')}>
+      Začasno ustavi agenta
+    </Button>
+  ) : paused && heldBy ? (
+    <p className="max-w-xs text-sm text-fg-muted">
+      {`Agenta tukaj ni mogoče vklopiti. ${PAUSED_BY_ADMIN[heldBy].label}.`}
+    </p>
+  ) : undefined;
+
+  const unpaid =
+    account.status === 'past_due'
+      ? ' Plačilo ni urejeno; agent bo deloval kljub temu.'
+      : account.status === 'paused_limit'
+        ? ' Minute so porabljene; agent bo deloval kljub temu.'
+        : '';
 
   return (
     <>
@@ -103,26 +130,21 @@ export default function AccountDetail() {
           <span className="flex flex-wrap items-center gap-2">
             {plan ? <Badge tone="accent">{plan.name}</Badge> : <Badge>Brez paketa</Badge>}
             <StatusPill tone={sub.tone}>{sub.label}</StatusPill>
-            <StatusPill tone={agent.tone}>Agent: {agent.label.toLowerCase()}</StatusPill>
+            <StatusPill tone={agent.tone}>{agentStatusText(detail.agent_status)}</StatusPill>
             {detail.error_count > 0 ? (
               <StatusPill tone="danger">{plural(detail.error_count, ERROR_FORMS)}</StatusPill>
             ) : null}
           </span>
         }
-        actions={
-          paused ? (
-            <Button variant="primary" icon={Play} onClick={() => setConfirm('resume')}>
-              Znova vklopi agenta
-            </Button>
-          ) : canPause ? (
-            <Button icon={Pause} onClick={() => setConfirm('pause')}>
-              Začasno ustavi agenta
-            </Button>
-          ) : undefined
-        }
+        actions={actions}
       />
 
       <div className="flex min-w-0 flex-col gap-6">
+        {note ? (
+          <Notice size="sm" tone="neutral">
+            {note}
+          </Notice>
+        ) : null}
         <div className="grid min-w-0 gap-6 lg:grid-cols-2">
           <SubscriptionCard detail={detail} />
           <AgentCard detail={detail} />
@@ -130,9 +152,6 @@ export default function AccountDetail() {
           <ActivityCard detail={detail} />
         </div>
         <ErrorsCard detail={detail} />
-        <p className="text-sm text-fg-subtle">
-          Vsebine pogovorov in podatkov obiskovalcev tu ne prikazujemo, vidite samo številke. E-naslovi v opisih napak so skriti.
-        </p>
       </div>
 
       {confirm ? (
@@ -145,15 +164,14 @@ export default function AccountDetail() {
           description={
             confirm === 'pause'
               ? 'Pripomoček na spletni strani stranke bo obiskovalcem sporočil, da agent trenutno ni na voljo. Agenta lahko znova vklopite, ko želite.'
-              : `Pripomoček na spletni strani stranke bo spet odgovarjal obiskovalcem.${
-                  subscriptionHeld ? ` Stanje naročnine ostane »${sub.label}«.` : ''
-                }`
+              : `Pripomoček na spletni strani stranke bo spet odgovarjal obiskovalcem. Odstranjena bo samo skrbniška ustavitev.${unpaid}`
           }
           confirmLabel={confirm === 'pause' ? 'Začasno ustavi agenta' : 'Znova vklopi agenta'}
           onConfirm={async () => {
+            setNote(null);
             const result = await setPaused.run(account.id, confirm === 'pause');
             if (!result) return;
-            if (result.simulated) toast.info(result.message);
+            if (result.simulated) setNote(result.message);
             else toast.success(result.message);
           }}
         />

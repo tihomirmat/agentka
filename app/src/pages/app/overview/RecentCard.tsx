@@ -6,14 +6,14 @@ import { formatRelativeDateTime } from '@/data/format';
 import { CONVERSATION_OUTCOME } from '@/data/labels';
 import { Pending } from './parts';
 
-/** "Zadnji pogovori": the four newest, each leads to its own page. */
+/** "Najnovejši pogovori": up to four, each leads to its own page. */
 export function RecentCard() {
   const conversations = api.useQuery(() => api.listConversations(), []);
   const recent = conversations.data?.slice(0, 4);
 
   return (
     <Card>
-      <CardHeader title="Zadnji pogovori" description="Štirje najnovejši pogovori obiskovalcev z agentom." divider />
+      <CardHeader title="Najnovejši pogovori" description="Pogovori obiskovalcev z agentom, od najnovejšega." divider />
       {recent === undefined ? (
         <Pending queries={[conversations]} lines={4} />
       ) : recent.length === 0 ? (

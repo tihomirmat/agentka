@@ -1,14 +1,23 @@
 import { useRef, useState } from 'react';
 import { CircleAlert } from 'lucide-react';
 import * as api from '@/data/api';
-import { Button, Card, CardBody, EmptyState, PageHeader, Skeleton, SkeletonText, useToast } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardBody,
+  EmptyState,
+  PageHeader,
+  SaveBar,
+  Skeleton,
+  SkeletonText,
+  useDraft,
+  useToast,
+} from '@/components/ui';
 import { CalendarCard } from './booking/CalendarCard';
 import { HoursCard, invalidDays } from './booking/HoursCard';
 import { ModeCard } from './booking/ModeCard';
 import { PreviewCard } from './booking/PreviewCard';
 import { RulesCard, ruleErrors } from './booking/RulesCard';
-import { SaveBar } from './screen-kit/SaveBar';
-import { useDraft } from './screen-kit/useDraft';
 
 /** Termini: how the agent handles appointments and when the business is available. */
 export default function Booking() {
@@ -147,7 +156,7 @@ export default function Booking() {
       </div>
 
       <SaveBar
-        visible={draft.dirty}
+        dirty={draft.dirty}
         saving={save.pending}
         canSave={!invalid}
         blockedReason={blockedReason}

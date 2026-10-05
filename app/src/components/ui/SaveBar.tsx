@@ -86,6 +86,7 @@ export function SaveBar({
   guard = true,
 }: SaveBarProps) {
   const wrapper = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const guardDialog = useUnsavedGuard(guard && dirty);
 
   // While the bar floats over the content, keep a field that gets focus (or is scrolled to)
@@ -105,6 +106,38 @@ export function SaveBar({
     };
   }, [dirty]);
 
+  // Tell the toasts where the bar is: `--toast-lift` is the distance from the bottom edge of the
+  // window to the top of the bar plus a gap, so a toast stacks ABOVE the bar instead of on it
+  // (Toast.tsx → Toaster). The bar is sticky, so it moves while the page scrolls and when the
+  // page is short; the value follows it.
+  useEffect(() => {
+    if (!dirty) return;
+    const bar = barRef.current;
+    if (!bar) return;
+    const root = document.documentElement;
+    let scroller = bar.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) {
+      scroller = scroller.parentElement;
+    }
+    const update = () => {
+      const top = bar.getBoundingClientRect().top;
+      root.style.setProperty('--toast-lift', `${Math.max(0, Math.ceil(window.innerHeight - top)) + 12}px`);
+    };
+    update();
+    const settle = window.setTimeout(update, 250); // after the bar has risen into place
+    const observer = new ResizeObserver(update);
+    observer.observe(bar);
+    scroller?.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      window.clearTimeout(settle);
+      observer.disconnect();
+      scroller?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      root.style.removeProperty('--toast-lift');
+    };
+  }, [dirty]);
+
   return (
     // The wrapper itself is the sticky element: a sticky child cannot leave its parent, and a
     // wrapper that is only as tall as the bar would pin nothing. The margin sits on the child so
@@ -113,6 +146,7 @@ export function SaveBar({
       {dirty ? (
         <div className="mt-6 motion-safe:animate-rise-in">
           <div
+            ref={barRef}
             role="group"
             aria-label="Neshranjene spremembe"
             className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-lg border border-border-strong bg-raised px-4 py-3 shadow-md"

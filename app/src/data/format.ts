@@ -10,7 +10,9 @@
  *   - a date in a document or table → formatDate: "3. okt. 2026";
  *   - the time is always 24-hour with two digits: "08:05", "14:30";
  *   - a length of time              → formatDuration: "8 min 18 s" (never "08:18", which reads
- *     as a time of day); a position inside a recording → formatTimecode: "01:24".
+ *     as a time of day); a position inside a recording → formatTimecode: "01:24";
+ *   - a number and its unit are joined by a NON-BREAKING space ("300 min", "59 €", "3 dnevi"),
+ *     so a line never ends after the figure. Do not patch it in a page.
  */
 import type { IsoDate } from './types';
 
@@ -56,6 +58,17 @@ const fmtEur2 = new Intl.NumberFormat(LOCALE, {
 });
 const fmtNumber = new Intl.NumberFormat(LOCALE);
 const fmtPercent = new Intl.NumberFormat(LOCALE, { style: 'percent', maximumFractionDigits: 0 });
+
+/** The space between a figure and its unit: it never breaks across lines. */
+const NBSP = '\u00a0';
+
+/**
+ * Intl puts a no-break space before "€" and "%" in Slovenian, but which one (U+00A0 or U+202F)
+ * depends on the ICU version of the browser. One character for every device.
+ */
+function joined(text: string): string {
+  return text.replace(/\s/g, NBSP);
+}
 
 /** "3. okt. 2026" */
 export function formatDate(value: DateInput): string {
@@ -167,9 +180,9 @@ export function formatDuration(totalSec: number): string {
   const s = Math.max(0, Math.round(totalSec));
   const mm = Math.floor(s / 60);
   const ss = s % 60;
-  if (mm === 0) return `${ss} s`;
-  if (ss === 0) return `${fmtNumber.format(mm)} min`;
-  return `${fmtNumber.format(mm)} min ${ss} s`;
+  if (mm === 0) return `${ss}${NBSP}s`;
+  if (ss === 0) return `${fmtNumber.format(mm)}${NBSP}min`;
+  return `${fmtNumber.format(mm)}${NBSP}min ${ss}${NBSP}s`;
 }
 
 /** A position inside a conversation: 84 → "01:24". Only for the time marks of transcript turns. */
@@ -182,22 +195,22 @@ export function formatTimecode(totalSec: number): string {
 
 /** 86 → "86 min" */
 export function formatMinutes(min: number): string {
-  return `${fmtNumber.format(Math.round(min))} min`;
+  return `${fmtNumber.format(Math.round(min))}${NBSP}min`;
 }
 
-/** (86, 300) → "86 / 300 min" */
+/** (86, 300) → "86 / 300 min" (the whole fraction stays on one line) */
 export function formatMinutesOf(used: number, included: number): string {
-  return `${fmtNumber.format(Math.round(used))} / ${fmtNumber.format(Math.round(included))} min`;
+  return `${fmtNumber.format(Math.round(used))}${NBSP}/${NBSP}${fmtNumber.format(Math.round(included))}${NBSP}min`;
 }
 
 /** 59 → "59 €" · 12.5 → "12,50 €". Whole amounts print without cents. */
 export function formatEur(amount: number): string {
-  return Number.isInteger(amount) ? fmtEur0.format(amount) : fmtEur2.format(amount);
+  return joined(Number.isInteger(amount) ? fmtEur0.format(amount) : fmtEur2.format(amount));
 }
 
 /** Always two decimals: 59 → "59,00 €" (invoices). */
 export function formatEurExact(amount: number): string {
-  return fmtEur2.format(amount);
+  return joined(fmtEur2.format(amount));
 }
 
 /** 59 → "59 € na mesec" */
@@ -212,7 +225,7 @@ export function formatNumber(n: number): string {
 
 /** 0.29 → "29 %" */
 export function formatPercent(ratio: number): string {
-  return fmtPercent.format(ratio);
+  return joined(fmtPercent.format(ratio));
 }
 
 /**
@@ -226,7 +239,7 @@ export function plural(n: number, forms: [string, string, string, string]): stri
   else if (abs === 2) word = forms[1];
   else if (abs === 3 || abs === 4) word = forms[2];
   else word = forms[3];
-  return `${fmtNumber.format(n)} ${word}`;
+  return `${fmtNumber.format(n)}${NBSP}${word}`;
 }
 
 /** Word forms for plural(): [1, 2, 3–4, 5+ and 0]. One set per noun, used everywhere. */

@@ -1,8 +1,8 @@
-import { ButtonLink, Card, CardBody, CardFooter, CardHeader, CopyValue, StatusPill } from '@/components/ui';
+import { ButtonLink, Card, CardBody, CardFooter, CardHeader, CopyValue, FactList, Notice, StatusPill } from '@/components/ui';
 import * as api from '@/data/api';
 import { formatRelativeDateTime } from '@/data/format';
 import { EMAIL_KIND } from '@/data/labels';
-import { Detail, Details, Notice, Pending } from './parts';
+import { Pending } from './parts';
 
 /** The newest failed e-mail of the account, read from the e-mail log of the conversations that have one. */
 async function findLastFailedEmail(): Promise<api.EmailLog | null> {
@@ -18,43 +18,57 @@ async function findLastFailedEmail(): Promise<api.EmailLog | null> {
   return null;
 }
 
-function OnOff({ on }: { on: boolean }) {
-  return on ? <StatusPill tone="success">Vklopljeno</StatusPill> : <StatusPill tone="neutral">Izklopljeno</StatusPill>;
-}
+const yesNo = (on: boolean) => (on ? 'Da' : 'Ne');
 
 /** "Obvestila": who is told after a conversation, and the last e-mail that did not arrive. */
 export function NotificationsCard() {
   const settings = api.useQuery(() => api.getNotificationSettings(), []);
   const failed = api.useQuery(findLastFailedEmail, []);
   const n = settings.data;
+  const anyOn = n ? n.owner_email_enabled || n.visitor_email_enabled : false;
 
   return (
     <Card>
       <CardHeader
         title="Obvestila"
         description="Kdo po pogovoru prejme e-pošto."
-        action={n ? <OnOff on={n.owner_email_enabled || n.visitor_email_enabled} /> : null}
+        // ONE pill for the whole card; the rows below say da / ne in plain words.
+        action={
+          n ? (
+            <StatusPill tone={anyOn ? 'success' : 'neutral'}>{anyOn ? 'Vklopljeno' : 'Izklopljeno'}</StatusPill>
+          ) : null
+        }
       />
       {n && failed.data !== undefined ? (
         <>
           <CardBody className="flex flex-col gap-4">
-            <Details>
-              <Detail label="E-naslov">
-                {n.notify_email ? (
-                  <CopyValue value={n.notify_email} copyLabel="Kopiraj e-naslov" mono className="text-sm" />
-                ) : (
-                  <span className="text-fg-muted">Ni vpisan.</span>
-                )}
-              </Detail>
-              <Detail label="Obvestilo vam">
-                <OnOff on={n.owner_email_enabled} />
-              </Detail>
-              <Detail label="Potrditev obiskovalcu">
-                <OnOff on={n.visitor_email_enabled} />
-              </Detail>
-            </Details>
+            <FactList
+              columns={3}
+              items={[
+                {
+                  label: 'E-naslov',
+                  value: n.notify_email ? (
+                    <CopyValue value={n.notify_email} copyLabel="Kopiraj e-naslov" mono className="text-sm" />
+                  ) : (
+                    <span className="text-fg-muted">Ni vpisan.</span>
+                  ),
+                },
+                { label: EMAIL_KIND.owner_notification, value: yesNo(n.owner_email_enabled) },
+                { label: EMAIL_KIND.visitor_confirmation, value: yesNo(n.visitor_email_enabled) },
+              ]}
+            />
             {failed.data ? (
-              <Notice tone="danger" title="Zadnje sporočilo ni bilo dostavljeno.">
+              <Notice
+                tone="danger"
+                title="Zadnje sporočilo ni bilo dostavljeno."
+                action={
+                  failed.data.conversation_id ? (
+                    <ButtonLink to={`/app/pogovori/${failed.data.conversation_id}`} size="sm">
+                      Odpri pogovor
+                    </ButtonLink>
+                  ) : null
+                }
+              >
                 {EMAIL_KIND[failed.data.kind]} za {failed.data.to}, {formatRelativeDateTime(failed.data.sent_at)}.
                 {failed.data.error ? ` ${failed.data.error}` : ''}
               </Notice>

@@ -24,7 +24,7 @@ export const VARIABLES: TemplateVariable[] = [
   { name: 'podjetje', hint: 'Ime vašega podjetja' },
   { name: 'povzetek', hint: 'Povzetek pogovora' },
   { name: 'dogovorjeno', hint: 'Kaj je bilo dogovorjeno' },
-  { name: 'povezava', hint: 'Povezava do zapisa pogovora' },
+  { name: 'povezava', hint: 'Povezava do prepisa pogovora' },
 ];
 
 /** Variables offered as chips: the visitor gets no link to the business's own record. */
@@ -56,7 +56,7 @@ export function valuesFor(conversation: Conversation | undefined, business: stri
     podjetje: business,
     povzetek: conversation.summary,
     dogovorjeno: conversation.agreed ?? 'Ni bilo dogovora.',
-    povezava: '(povezava do zapisa pogovora)',
+    povezava: '(povezava do prepisa pogovora)',
   };
 }
 

@@ -1,9 +1,13 @@
 import { Skeleton, Stat } from '@/components/ui';
 import * as api from '@/data/api';
-import { formatDate, formatNumber } from '@/data/format';
+import { formatDate, formatMinutes, formatNumber } from '@/data/format';
+import { COUNT_LABELS } from '@/data/labels';
 import { Pending } from './parts';
 
-/** The four numbers of the current billing period. */
+/**
+ * The four numbers of the current billing period. Names come from COUNT_LABELS and the
+ * conversation count from the api's own summary, so Pregled and Pogovori never disagree.
+ */
 export function StatsRow() {
   const stats = api.useQuery(() => api.getOverviewStats(), []);
   const s = stats.data;
@@ -29,7 +33,7 @@ export function StatsRow() {
   const left = Math.max(0, Math.round(s.minutes_included - s.minutes_used));
   const ratio = s.minutes_included > 0 ? s.minutes_used / s.minutes_included : 0;
   const minutesNote =
-    ratio >= 1 ? 'minute so porabljene' : ratio >= 0.8 ? `samo še ${formatNumber(left)} min` : `še ${formatNumber(left)} min`;
+    ratio >= 1 ? 'minute so porabljene' : ratio >= 0.8 ? `samo še ${formatMinutes(left)}` : `še ${formatMinutes(left)}`;
 
   return (
     <section aria-labelledby="overview-period" className="min-w-0">
@@ -40,11 +44,23 @@ export function StatsRow() {
         </span>
       </p>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Pogovori" value={formatNumber(s.conversations)} sub="v tem obdobju" />
-        <Stat label="Kontakti" value={formatNumber(s.leads)} sub="v tem obdobju" />
-        <Stat label="Rezervacije" value={formatNumber(s.bookings)} sub="v tem obdobju" />
         <Stat
-          label="Porabljene minute"
+          label={COUNT_LABELS.conversationsInPeriod.label}
+          value={formatNumber(s.counts.total)}
+          sub={COUNT_LABELS.conversationsInPeriod.sub}
+        />
+        <Stat
+          label={COUNT_LABELS.leadsInPeriod.label}
+          value={formatNumber(s.leads)}
+          sub={COUNT_LABELS.leadsInPeriod.sub}
+        />
+        <Stat
+          label={COUNT_LABELS.bookingsInPeriod.label}
+          value={formatNumber(s.bookings)}
+          sub={COUNT_LABELS.bookingsInPeriod.sub}
+        />
+        <Stat
+          label={COUNT_LABELS.minutesInPeriod.label}
           value={formatNumber(used)}
           unit={`/ ${formatNumber(s.minutes_included)} min`}
           progress={{ value: s.minutes_used, max: s.minutes_included }}

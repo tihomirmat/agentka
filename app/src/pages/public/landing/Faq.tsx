@@ -2,33 +2,34 @@ import { ChevronDown } from 'lucide-react';
 import { Section, SectionHead } from './Section';
 
 /**
- * Honest answers to what a careful owner asks. Each answer states only what the product
- * does according to the spec — no legal, data-location or result claims.
+ * Answers to what a careful owner is likely to ask. Each answer states only what the product
+ * does according to the spec — no legal, data-location or result claims, and no language
+ * other than Slovenian until it has been tested. Public pages say "pomočnik", not "agent".
  */
 const QUESTIONS: { q: string; a: string }[] = [
   {
-    q: 'Ali agent res govori slovensko?',
-    a: 'Slovenščina je privzeti jezik agenta, odgovarja z vikanjem in v kratkih stavkih. V nastavitvah lahko izberete tudi hrvaščino, srbščino ali angleščino. Preden agenta namestite na stran, ga preizkusite sami in presodite, ali vam ustreza.',
+    q: 'Ali pomočnik res govori slovensko?',
+    a: 'Odgovarja po slovensko, z vikanjem in v kratkih stavkih. Preden pomočnika namestite na stran, ga preizkusite sami in presodite, ali vam ustreza.',
   },
   {
-    q: 'Kaj če agent ne ve odgovora?',
-    a: 'Agent odgovarja samo iz virov, ki ste jih dodali: besedila vaše spletne strani, datotek in besedil. Če odgovora v njih ni, to pove in ponudi klic nazaj. Cen, rokov ali obljub, ki jih v virih ni, ne navaja. Podatke, ki jih obiskovalec pusti, vidite med kontakti.',
+    q: 'Kaj če pomočnik ne ve odgovora?',
+    a: 'Pomočnik odgovarja samo iz virov, ki ste jih dodali: besedila vaše spletne strani, datotek in besedil. Če odgovora v njih ni, to pove in ponudi klic nazaj. Cen, rokov ali obljub, ki jih v virih ni, ne navaja. Podatke, ki jih obiskovalec pusti, vidite med kontakti.',
   },
   {
     q: 'Ali obiskovalec ve, da govori z umetno inteligenco?',
-    a: 'Da. Agent se v prvem stavku predstavi kot AI pomočnik vašega podjetja in to potrdi, če ga obiskovalec vpraša.',
+    a: 'Da. Pomočnik se v prvem stavku predstavi kot AI pomočnik vašega podjetja in to potrdi, če ga obiskovalec vpraša.',
   },
   {
     q: 'Kaj potrebujem za začetek?',
-    a: 'Spletno stran z besedilom, e-naslov za obvestila in možnost, da na stran vstavite eno vrstico kode. Google Koledar potrebujete samo za samodejno rezervacijo, povpraševanje deluje brez njega. Nastavitev vodi čarovnik v petih korakih, vsakega lahko preskočite in dokončate pozneje.',
+    a: 'Spletno stran z besedilom (ali datoteke in besedila, ki jih dodate sami), e-naslov za obvestila in možnost, da na stran vstavite eno vrstico kode. Google Koledar potrebujete samo za samodejno rezervacijo, povpraševanje deluje brez njega. Nastavitev vodi čarovnik v petih korakih. Prekinete jo lahko kadar koli in nadaljujete pozneje.',
   },
   {
     q: 'Kaj se zgodi, ko porabim minute?',
-    a: 'Ko porabite 80 % vključenih minut, vam pošljemo e-pošto. Pri 100 % se agent začasno ustavi: pripomoček obiskovalcu z enim stavkom pove, da pomočnik trenutno ni na voljo. Ko se obdobje obnovi ali preidete na višji paket, agent samodejno spet začne delovati.',
+    a: 'Ko porabite 80 % vključenih minut, vam pošljemo e-pošto. Pri 100 % se pomočnik začasno ustavi: pripomoček obiskovalcu z enim stavkom pove, da pomočnik trenutno ni na voljo. Ko se obdobje obnovi ali preidete na višji paket, pomočnik samodejno spet začne delovati.',
   },
   {
-    q: 'Ali lahko kadarkoli prekinem?',
-    a: 'Naročnino in plačilo upravljate sami v razdelku Naročnina, račun z vsemi podatki pa lahko izbrišete v Nastavitvah. Za preizkus vam ni treba izbrati paketa.',
+    q: 'Kaj če si premislim?',
+    a: 'Uporabniški račun z vsemi podatki lahko kadar koli izbrišete v Nastavitvah. Za brezplačni preizkus vam ni treba izbrati paketa.',
   },
 ];
 
@@ -39,7 +40,7 @@ export function Faq() {
         <SectionHead
           id="vprasanja-naslov"
           title="Pogosta vprašanja"
-          lead="Kar nas najpogosteje vprašajo lastniki podjetij, preden začnejo."
+          lead="Odgovori na vprašanja, ki si jih boste verjetno zastavili pred začetkom."
         />
         <div className="border-t border-border">
           {QUESTIONS.map(({ q, a }) => (

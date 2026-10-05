@@ -9,14 +9,15 @@ import {
   CardHeader,
   ConfirmDialog,
   CopyValue,
+  FactList,
   Field,
+  Notice,
   Select,
   SkeletonText,
   StatusPill,
   useToast,
 } from '@/components/ui';
 import type { LabelTone } from '@/data/labels';
-import { ResultNote } from '../screen-kit/ResultNote';
 
 const CONNECTION_STATE: Record<api.CalendarConnection['status'], { label: string; tone: LabelTone }> = {
   connected: { label: 'Povezan', tone: 'success' },
@@ -41,42 +42,24 @@ export const CalendarCard = forwardRef<HTMLButtonElement, CalendarCardProps>(fun
 ) {
   const toast = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  // The api's own sentence for the last connect or disconnect: ONE inline notice, no toast as well.
+  const [result, setResult] = useState<api.ActionResult | null>(null);
 
-  const connect = api.useAction(api.connectCalendar, {
-    onError: (m) => {
-      setProblem(m);
-      toast.error(m);
-    },
-  });
-  const disconnect = api.useAction(api.disconnectCalendar, {
-    onError: (m) => {
-      setProblem(m);
-      toast.error(m);
-    },
-  });
+  const connect = api.useAction(api.connectCalendar, { onError: toast.error });
+  const disconnect = api.useAction(api.disconnectCalendar, { onError: toast.error });
 
   async function runConnect() {
-    setNote(null);
-    setProblem(null);
+    setResult(null);
     const r = await connect.run();
-    if (r) {
-      setNote(r.message);
-      if (r.simulated) toast.info(r.message);
-      else toast.success(r.message);
-    }
+    if (r) setResult(r);
   }
 
   async function runDisconnect() {
-    setNote(null);
-    setProblem(null);
+    setResult(null);
     const r = await disconnect.run();
     if (r) {
       onDisconnected();
-      setNote(r.message);
-      if (r.simulated) toast.info(r.message);
-      else toast.success(r.message);
+      setResult(r);
     }
   }
 
@@ -100,23 +83,20 @@ export const CalendarCard = forwardRef<HTMLButtonElement, CalendarCardProps>(fun
           <SkeletonText lines={3} />
         ) : connection ? (
           <>
-            <dl className="grid min-w-0 gap-x-6 gap-y-3 sm:grid-cols-2">
-              <div className="min-w-0">
-                <dt className="text-sm font-medium text-fg">Povezan račun</dt>
-                <dd className="mt-1 min-w-0">
-                  <CopyValue value={connection.connected_email} copyLabel="Kopiraj e-naslov" />
-                </dd>
-              </div>
-              <div className="min-w-0">
-                <dt className="text-sm font-medium text-fg">Povezano od</dt>
-                <dd className="mt-1 text-base text-fg-muted">{formatDate(connection.connected_at)}</dd>
-              </div>
-            </dl>
+            <FactList
+              items={[
+                {
+                  label: 'Povezan račun',
+                  value: <CopyValue value={connection.connected_email} copyLabel="Kopiraj e-naslov" />,
+                },
+                { label: 'Povezano od', value: formatDate(connection.connected_at) },
+              ]}
+            />
             {connection.status !== 'connected' ? (
-              <ResultNote
-                tone="danger"
-                message="Agent trenutno ne more brati koledarja. Povežite Google Koledar znova, da bo samodejna rezervacija spet delovala."
-              />
+              <Notice size="sm" tone={connection.status === 'error' ? 'danger' : 'warning'} live={false}>
+                Agent trenutno ne more brati koledarja. Povežite Google Koledar znova, da bo samodejna rezervacija spet
+                delovala.
+              </Notice>
             ) : null}
             <Field
               label="Koledar za rezervacije"
@@ -157,8 +137,11 @@ export const CalendarCard = forwardRef<HTMLButtonElement, CalendarCardProps>(fun
             </div>
           </>
         )}
-        <ResultNote message={note} />
-        <ResultNote tone="danger" message={problem} />
+        {result ? (
+          <Notice size="sm" tone={result.simulated ? 'neutral' : 'success'}>
+            {result.message}
+          </Notice>
+        ) : null}
       </CardBody>
 
       <ConfirmDialog

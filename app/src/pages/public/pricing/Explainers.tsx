@@ -1,5 +1,6 @@
 import { Check } from 'lucide-react';
 import { Card, CardBody, CardHeader, ProgressBar } from '@/components/ui';
+import { TRIAL } from '@/data/labels';
 
 const INCLUDED = [
   'Branje besedila vaše spletne strani ter vaših datotek in besedil',
@@ -8,7 +9,7 @@ const INCLUDED = [
   'Pregled pogovorov, kontaktov in rezervacij v aplikaciji',
 ];
 
-/** What is the same in every plan (the Plan record only differs in minutes, pages and agents). */
+/** What is the same in every plan (the Plan record only differs in minutes and pages). */
 export function IncludedInEvery() {
   return (
     <Card tone="quiet">
@@ -27,7 +28,10 @@ export function IncludedInEvery() {
   );
 }
 
-/** What counts as a minute, and what the trial is (two small cards, one column). */
+/**
+ * What counts as a minute, and what happens when the trial ends (two small cards, one column).
+ * The numbers of the trial are not repeated here: the page prints them once, above the plans.
+ */
 export function MinutesAndTrial() {
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -35,17 +39,17 @@ export function MinutesAndTrial() {
         <CardHeader title="Kaj je minuta pogovora" />
         <CardBody className="text-base text-fg-muted">
           <p>
-            Minute štejejo trajanje pogovorov med obiskovalci in agentom. Trajanje vsakega pogovora vidite v razdelku
+            V minute se šteje trajanje pogovorov obiskovalcev s pomočnikom. Trajanje vsakega pogovora vidite v razdelku
             Pogovori, porabo v tekočem obdobju pa na strani Pregled in v razdelku Naročnina.
           </p>
         </CardBody>
       </Card>
       <Card>
-        <CardHeader title="Brezplačen preizkus" />
+        <CardHeader title={TRIAL.name} />
         <CardBody className="text-base text-fg-muted">
           <p>
-            Preizkus ima omejeno število dni in minut. Ko se izteče ali ko porabite njegove minute, se agent začasno
-            ustavi, dokler ne izberete paketa.
+            Ko se brezplačni preizkus izteče ali ko porabite njegove minute, se pomočnik začasno ustavi, dokler ne
+            izberete paketa.
           </p>
         </CardBody>
       </Card>
@@ -58,7 +62,7 @@ const LIMIT_STEPS: { value: number; label: string; text: string }[] = [
   {
     value: 100,
     label: '100 % minut',
-    text: 'Agent se začasno ustavi. Pripomoček obiskovalcu z enim stavkom pove, da pomočnik trenutno ni na voljo.',
+    text: 'Pomočnik se začasno ustavi. Pripomoček obiskovalcu z enim stavkom pove, da pomočnik trenutno ni na voljo.',
   },
 ];
 
@@ -66,7 +70,7 @@ const LIMIT_STEPS: { value: number; label: string; text: string }[] = [
 export function LimitExplainer() {
   return (
     <Card>
-      <CardHeader title="Ko minute pošlejo" description="Vključene minute veljajo za tekoče obdobje naročnine." />
+      <CardHeader title="Ko zmanjka minut" description="Vključene minute veljajo za tekoče obdobje naročnine." />
       <CardBody>
         <ol className="flex flex-col gap-4">
           {LIMIT_STEPS.map((s) => (
@@ -78,7 +82,7 @@ export function LimitExplainer() {
           ))}
           <li className="min-w-0 border-t border-border pt-4">
             <p className="text-base font-medium text-fg">Novo obdobje ali višji paket</p>
-            <p className="mt-1 text-base text-fg-muted">Agent samodejno spet začne delovati.</p>
+            <p className="mt-1 text-base text-fg-muted">Pomočnik samodejno spet začne delovati.</p>
           </li>
         </ol>
       </CardBody>

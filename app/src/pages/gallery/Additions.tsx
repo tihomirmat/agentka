@@ -576,7 +576,7 @@ export function GalleryAdditions() {
               label="Koda za vgradnjo"
               code={'<script src="https://widget.example/v1.js" data-agent="agt_vzorec" async></script>'}
               onCopied={() => setCodeNote('Koda je kopirana.')}
-              onFallback={() => setCodeNote(copyFallbackSentence('Kodo'))}
+              onFallback={() => setCodeNote(copyFallbackSentence({ object: 'Kodo', pronoun: 'jo' }))}
             />
             {codeNote ? (
               <Notice size="sm" tone="neutral">

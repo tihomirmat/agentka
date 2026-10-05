@@ -1,28 +1,29 @@
 import { useState } from 'react';
 import { WizardStep } from '@/components/layout';
 import { AgentWidget } from '@/components/widget';
-import { Button, CodeBlock, CopyButton, SkeletonText } from '@/components/ui';
+import { Button, ButtonLink, CodeBlock, CopyButton, Notice, SkeletonText, useToast } from '@/components/ui';
 import * as api from '@/data/api';
+import { AGENT_STATUS_HELP, agentStatusText } from '@/data/labels';
 import { messageOf, type StepNav } from '../draft';
-import { Callout } from '../parts';
 
-interface Props extends StepNav {
+/** The last step has no "Preskoči": leaving without finishing is "Nadaljuj pozneje" in the shell. */
+interface Props extends Omit<StepNav, 'onSkip'> {
   agent: api.Agent;
 }
 
-export function InstallStep({ agent, onBack, onSkip, onDone }: Props) {
+export function InstallStep({ agent, onBack, onDone }: Props) {
+  const toast = useToast();
   const embed = api.useQuery(() => api.getEmbedCode(), []);
+  const readiness = api.useQuery(() => api.getAgentReadiness(), []);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function finish() {
-    setError(null);
     setBusy(true);
     try {
       await api.setOnboardingStep('done');
       await onDone();
     } catch (e) {
-      setError(messageOf(e));
+      toast.error(`Nastavitve ni bilo mogoče končati. ${messageOf(e)}`);
       setBusy(false);
     }
   }
@@ -37,11 +38,6 @@ export function InstallStep({ agent, onBack, onSkip, onDone }: Props) {
       back={
         <Button variant="ghost" onClick={onBack}>
           Nazaj
-        </Button>
-      }
-      skip={
-        <Button variant="ghost" onClick={onSkip}>
-          Preskoči
         </Button>
       }
       next={
@@ -61,6 +57,7 @@ export function InstallStep({ agent, onBack, onSkip, onDone }: Props) {
           <AgentWidget
             agentName={agent.name}
             businessName={agent.business_name}
+            voiceId={agent.voice_id}
             firstMessage={agent.first_message}
             textInput={agent.widget_text_input}
             accentHex={agent.widget_accent_color}
@@ -78,11 +75,15 @@ export function InstallStep({ agent, onBack, onSkip, onDone }: Props) {
           {embed.data ? (
             <CodeBlock label="Koda za vgradnjo" code={code} onCopied={() => void api.markCodeCopied()} />
           ) : embed.error ? (
-            <Callout tone="danger" title={embed.error}>
-              <Button size="sm" onClick={embed.reload}>
-                Poskusi znova
-              </Button>
-            </Callout>
+            <Notice
+              tone="danger"
+              title={embed.error}
+              action={
+                <Button size="sm" onClick={embed.reload}>
+                  Poskusi znova
+                </Button>
+              }
+            />
           ) : (
             <SkeletonText lines={3} />
           )}
@@ -90,10 +91,10 @@ export function InstallStep({ agent, onBack, onSkip, onDone }: Props) {
           <ul className="mt-5 flex min-w-0 flex-col gap-4 text-sm text-fg-muted">
             <li>
               <span className="block text-base font-medium text-fg">WordPress</span>
-              Kodo prilepite v nogo strani (footer), na primer z vstavkom za dodajanje kode v glavo in nogo strani.
+              Kodo prilepite v nogo strani (footer), na primer z vtičnikom za dodajanje kode v glavo in nogo strani.
             </li>
             <li>
-              <span className="block text-base font-medium text-fg">Wix, Squarespace in drugi graditelji strani</span>
+              <span className="block text-base font-medium text-fg">Wix, Squarespace in drugi urejevalniki strani</span>
               V nastavitvah strani poiščite možnost za lastno kodo (po angleško »custom code« ali »code injection«) in
               jo dodajte na konec vseh strani.
             </li>
@@ -111,15 +112,55 @@ export function InstallStep({ agent, onBack, onSkip, onDone }: Props) {
               ) : null}
             </li>
           </ul>
-          <p className="mt-5 text-sm text-fg-subtle">Kodo najdete tudi pozneje pod Namestitev.</p>
+          <p className="mt-5 text-sm text-fg-subtle">Kodo najdete tudi pozneje v razdelku Namestitev.</p>
         </section>
       </div>
 
-      {error ? (
-        <Callout tone="danger" title="Nastavitve ni bilo mogoče končati." className="mt-6">
-          {error}
-        </Callout>
-      ) : null}
+      <WhatHappens readiness={readiness} />
     </WizardStep>
+  );
+}
+
+/**
+ * What "Končaj nastavitev" will do to the agent, said BEFORE the button is pressed. The api
+ * decides (getAgentReadiness): with an included source the agent goes live, without one it
+ * stays a draft. The wording of the states is the shared AGENT_STATUS_HELP.
+ */
+function WhatHappens({ readiness }: { readiness: api.QueryResult<api.AgentReadiness> }) {
+  const r = readiness.data;
+  if (!r) return null;
+
+  if (r.status === 'draft' && r.canActivate) {
+    return (
+      <Notice tone="info" title="Ko pritisnete »Končaj nastavitev«, se agent vklopi." className="mt-6">
+        {AGENT_STATUS_HELP.active}
+      </Notice>
+    );
+  }
+
+  if (r.status === 'draft') {
+    const missing = r.missing[0];
+    return (
+      <Notice
+        tone="warning"
+        title="Agent bo po koncu nastavitve ostal osnutek."
+        className="mt-6"
+        action={
+          <ButtonLink to="/zacetek/1" size="sm">
+            Dodaj strani v koraku 1
+          </ButtonLink>
+        }
+      >
+        {missing ? `${missing.text} ` : null}
+        {AGENT_STATUS_HELP.draft}
+      </Notice>
+    );
+  }
+
+  // Already switched on (or stopped): finishing does not change that.
+  return (
+    <Notice tone="neutral" title={`${agentStatusText(r.status)}. Končanje nastavitve tega ne spremeni.`} live={false} className="mt-6">
+      {AGENT_STATUS_HELP[r.status]}
+    </Notice>
   );
 }

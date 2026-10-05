@@ -19,7 +19,7 @@ export interface CopyButtonProps {
   onCopied?: () => void;
   /**
    * Called when the clipboard was refused and the text was only selected. Word it honestly,
-   * e.g. with copyFallbackSentence('Kodo') from '@/components/ui'.
+   * e.g. with copyFallbackSentence({ object: 'Kodo', pronoun: 'jo' }) from '@/components/ui'.
    */
   onFallback?: () => void;
   className?: string;

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CircleAlert } from 'lucide-react';
 import * as api from '@/data/api';
 import { formatRelativeDateTime, plural } from '@/data/format';
+import { SYNC_WORDS } from '@/data/labels';
 import {
   Button,
   Card,
@@ -14,11 +15,14 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui';
+import { cn } from '@/lib/cn';
 import { FilesTab } from './knowledge/FilesTab';
 import { TextTab } from './knowledge/TextTab';
 import { WebsiteTab } from './knowledge/WebsiteTab';
 
 const NO_SOURCES: api.KnowledgeSource[] = [];
+
+const DESCRIPTION = 'Agent odgovarja samo iz tega, kar je navedeno tukaj. Česar ni na seznamu, agent ne ve.';
 
 /** Viri znanja: everything the agent may answer from. */
 export default function Knowledge() {
@@ -32,17 +36,17 @@ export default function Knowledge() {
   const files = all.filter((s) => s.type === 'file');
   const texts = all.filter((s) => s.type === 'text');
 
+  // The number on a tab and the number in the summary are the same one: what the agent uses.
   const includedPages = pages.filter((s) => s.included).length;
+  const includedFiles = files.filter((s) => s.included).length;
+  const includedTexts = texts.filter((s) => s.included).length;
   const withError = all.filter((s) => s.status === 'error').length;
-  const lastSync = agent.data?.last_sync_at ?? null;
+  const lastRead = agent.data?.last_sync_at ?? null;
 
   if (sources.error && sources.data === undefined && !sources.loading) {
     return (
       <>
-        <PageHeader
-          title="Viri znanja"
-          description="Agent odgovarja samo iz tega, kar je navedeno tukaj. Česar ni na seznamu, agent ne ve."
-        />
+        <PageHeader title="Viri znanja" description={DESCRIPTION} />
         <Card>
           <EmptyState
             icon={CircleAlert}
@@ -56,33 +60,33 @@ export default function Knowledge() {
 
   return (
     <>
-      <PageHeader
-        title="Viri znanja"
-        description="Agent odgovarja samo iz tega, kar je navedeno tukaj. Česar ni na seznamu, agent ne ve."
-      />
+      <PageHeader title="Viri znanja" description={DESCRIPTION} />
 
       <Card tone="quiet" className="mb-6">
         <div className="px-4 py-3 sm:px-5">
           {sources.loading ? (
             <Skeleton className="h-5 w-3/4 max-w-xl" />
           ) : (
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-base text-fg-muted">
+            <p className="flex flex-col items-start gap-y-1 text-base text-fg-muted sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 sm:gap-y-1.5">
               <span className="nums font-medium text-fg">
-                {plural(includedPages, ['vključena stran', 'vključeni strani', 'vključene strani', 'vključenih strani'])}
+                Vključeno: {includedPages} od {pages.length} strani
               </span>
-              <Dot />
-              <span className="nums font-medium text-fg">
-                {plural(files.length, ['datoteka', 'datoteki', 'datoteke', 'datotek'])}
+              <Dot className="hidden sm:inline" />
+              {/* On a phone the three parts stand on their own lines, so no separator dangles at a line end. */}
+              <span className="inline-flex items-center gap-x-2">
+                <span className="nums font-medium text-fg">
+                  {plural(includedFiles, ['datoteka', 'datoteki', 'datoteke', 'datotek'])}
+                </span>
+                <Dot />
+                <span className="nums font-medium text-fg">
+                  {plural(includedTexts, ['besedilo', 'besedili', 'besedila', 'besedil'])}
+                </span>
               </span>
-              <Dot />
-              <span className="nums font-medium text-fg">
-                {plural(texts.length, ['besedilo', 'besedili', 'besedila', 'besedil'])}
-              </span>
-              <Dot />
+              <Dot className="hidden sm:inline" />
               <span>
-                Zadnja sinhronizacija:{' '}
+                {SYNC_WORDS.lastLabel}:{' '}
                 <span className="font-medium text-fg">
-                  {lastSync ? formatRelativeDateTime(lastSync) : 'še ni bila izvedena'}
+                  {lastRead ? formatRelativeDateTime(lastRead) : SYNC_WORDS.never}
                 </span>
               </span>
               {withError > 0 ? (
@@ -97,14 +101,14 @@ export default function Knowledge() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList aria-label="Vrste virov znanja">
-          <TabsTrigger value="stran" count={sources.loading ? undefined : pages.length}>
-            Spletna stran
+          <TabsTrigger value="stran" count={sources.loading ? undefined : includedPages}>
+            Spletne strani
           </TabsTrigger>
-          <TabsTrigger value="datoteke" count={sources.loading ? undefined : files.length}>
+          <TabsTrigger value="datoteke" count={sources.loading ? undefined : includedFiles}>
             Datoteke
           </TabsTrigger>
-          <TabsTrigger value="besedilo" count={sources.loading ? undefined : texts.length}>
-            Besedilo
+          <TabsTrigger value="besedilo" count={sources.loading ? undefined : includedTexts}>
+            Besedila
           </TabsTrigger>
         </TabsList>
         <TabsContent value="stran">
@@ -128,9 +132,9 @@ export default function Knowledge() {
   );
 }
 
-function Dot() {
+function Dot({ className }: { className?: string }) {
   return (
-    <span aria-hidden="true" className="text-fg-subtle">
+    <span aria-hidden="true" className={cn('text-fg-subtle', className)}>
       ·
     </span>
   );

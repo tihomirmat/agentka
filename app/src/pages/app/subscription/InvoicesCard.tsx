@@ -28,7 +28,8 @@ export interface InvoicesCardProps {
 
 /**
  * Izdani računi. The data holds one description per invoice and no lines, and downloads are
- * not allowed in the preview, so the table has no action column.
+ * not allowed in the preview, so the table has no action column. On a phone every row is a
+ * small card (`stackBelow`), so the amount and the state are never off screen.
  */
 export function InvoicesCard({ invoices, loading, error, onRetry, onShowPlans }: InvoicesCardProps) {
   return (
@@ -49,6 +50,7 @@ export function InvoicesCard({ invoices, loading, error, onRetry, onShowPlans }:
       ) : (
         <Table
           minWidth={640}
+          stackBelow={640}
           caption="Izdani računi"
           empty={
             invoices?.length === 0 && (
@@ -77,10 +79,16 @@ export function InvoicesCard({ invoices, loading, error, onRetry, onShowPlans }:
                   <TD nowrap className="font-mono text-sm">
                     {invoice.number}
                   </TD>
-                  <TD nowrap>{formatDate(invoice.issued_at)}</TD>
-                  <TD muted>{invoice.description}</TD>
-                  <TD numeric>{formatEurExact(invoice.amount_eur)}</TD>
-                  <TD>
+                  <TD nowrap label="Datum">
+                    {formatDate(invoice.issued_at)}
+                  </TD>
+                  <TD muted label="Opis">
+                    {invoice.description}
+                  </TD>
+                  <TD numeric label="Znesek">
+                    {formatEurExact(invoice.amount_eur)}
+                  </TD>
+                  <TD label="Stanje">
                     <StatusPill tone={status.tone}>{status.label}</StatusPill>
                   </TD>
                 </TR>

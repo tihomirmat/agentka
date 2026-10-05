@@ -67,6 +67,13 @@ export { TimeSelect, type TimeSelectProps } from './TimeSelect';
 export { Toaster, useToast, type ToastTone } from './Toast';
 export { Tooltip, TooltipProvider, type TooltipProps } from './Tooltip';
 export { Waveform, type WaveformProps } from './Waveform';
-export { copyFallbackHint, copyFallbackSentence, useCopy, type CopyOutcome, type CopyState } from '@/lib/useCopy';
+export {
+  copyFallbackHint,
+  copyFallbackSentence,
+  useCopy,
+  type CopyFallbackSubject,
+  type CopyOutcome,
+  type CopyState,
+} from '@/lib/useCopy';
 export { deepEqual, useDraft, type Draft } from '@/lib/useDraft';
 export { useContainerWidth } from '@/lib/useContainerWidth';

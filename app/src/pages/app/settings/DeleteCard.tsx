@@ -1,12 +1,23 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
-import { Button, Card, CardBody, CardHeader, useToast } from '@/components/ui';
+import { Button, Card, CardBody, CardHeader, TypedConfirmDialog, useToast } from '@/components/ui';
 import * as api from '@/data/api';
-import { TypedConfirmDialog } from './TypedConfirmDialog';
 
-/** Danger zone. The API in the preview does not delete anything and says so; its message is shown as it is. */
-export function DeleteCard({ accountName }: { accountName: string }) {
+export interface DeleteCardProps {
+  accountName: string;
+  /** called just before the account is deleted, so the page lets go of unsaved edits and the leave guard stays quiet */
+  onBeforeDelete: () => void;
+}
+
+/**
+ * Izbris uporabniškega računa. The api removes the account's rows and ends the session, so
+ * the page cannot stay: afterwards the person is taken to the start page, and the api's
+ * sentence is shown there as a toast (a toast raised right before a page change survives it).
+ */
+export function DeleteCard({ accountName, onBeforeDelete }: DeleteCardProps) {
   const toast = useToast();
+  const navigate = useNavigate();
   const remove = api.useAction(api.deleteAccount, { onError: (m) => toast.error(m) });
   const [open, setOpen] = useState(false);
 
@@ -36,10 +47,11 @@ export function DeleteCard({ accountName }: { accountName: string }) {
         expected={accountName}
         confirmLabel="Izbriši uporabniški račun"
         onConfirm={async () => {
+          onBeforeDelete();
           const result = await remove.run();
           if (!result) return;
-          if (result.simulated) toast.info(result.message);
-          else toast.success(result.message);
+          toast.info(result.message);
+          navigate('/', { replace: true });
         }}
       />
     </Card>

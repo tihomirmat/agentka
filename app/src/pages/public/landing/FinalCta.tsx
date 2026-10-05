@@ -1,6 +1,6 @@
 import { ButtonLink, Card } from '@/components/ui';
 
-/** Last band: one line and the primary button. */
+/** Last band: one line and the primary button. The terms of the trial stand in the hero, once. */
 export function FinalCta() {
   return (
     <section aria-labelledby="zakljucek-naslov" className="border-t border-border py-12 md:py-16">
@@ -10,7 +10,7 @@ export function FinalCta() {
             <h2 id="zakljucek-naslov" className="font-display text-2xl font-semibold tracking-tight text-fg">
               Preizkusite pomočnika na svoji spletni strani
             </h2>
-            <p className="mt-1.5 text-base text-fg-muted">Brezplačen preizkus ima omejeno število dni in minut.</p>
+            <p className="mt-1.5 text-base text-fg-muted">Nastavitev vodi čarovnik v petih korakih.</p>
           </div>
           <ButtonLink to="/registracija" variant="primary">
             Začnite brezplačno

@@ -1,14 +1,28 @@
+import { useState } from 'react';
 import { CircleAlert } from 'lucide-react';
 import * as api from '@/data/api';
 import { formatRelativeDateTime } from '@/data/format';
-import { Button, Card, CardBody, EmptyState, PageHeader, Skeleton, SkeletonText, useToast } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  copyFallbackSentence,
+  EmptyState,
+  PageHeader,
+  SaveBar,
+  Skeleton,
+  SkeletonText,
+  StepList,
+  useDraft,
+  useToast,
+  type Step,
+  type StepState,
+} from '@/components/ui';
 import { AppearanceCard } from './install/AppearanceCard';
-import { Checklist, type ChecklistStep, type StepState } from './install/Checklist';
 import { CodeCard } from './install/CodeCard';
 import { DomainCard } from './install/DomainCard';
 import { domainError } from './install/helpers';
-import { SaveBar } from './screen-kit/SaveBar';
-import { useDraft } from './screen-kit/useDraft';
 
 const TITLE = 'Namestitev';
 const DESCRIPTION = 'Dodajte agenta na svojo spletno stran z eno vrstico kode.';
@@ -22,6 +36,8 @@ export default function Install() {
 
   const draft = useDraft<api.Agent>(agent.data);
   const save = api.useAction(api.updateAgent);
+  // true after a click on "Kopiraj kodo" that the browser refused: the code is only marked.
+  const [codeSelected, setCodeSelected] = useState(false);
 
   const value = draft.value;
 
@@ -60,7 +76,9 @@ export default function Install() {
 
   const invalid = domainError(value.allowed_domain) !== undefined;
 
+  /** The step is ticked here, and only here: after the clipboard really took the code, or when the owner says so. */
   function codeCopied() {
+    setCodeSelected(false);
     // Ticking the checklist is a convenience: a failure here must not disturb the copy itself.
     void api.markCodeCopied().catch(() => undefined);
   }
@@ -79,13 +97,14 @@ export default function Install() {
       <PageHeader title={TITLE} description={DESCRIPTION} />
 
       <div className="flex min-w-0 flex-col gap-6">
-        <ChecklistCard status={status} />
+        <ChecklistCard status={status} codeSelected={codeSelected} onConfirmCopied={codeCopied} />
 
         <CodeCard
           code={code.data?.code}
           error={code.error}
           onRetry={code.reload}
           onCopied={codeCopied}
+          onCodeSelected={() => setCodeSelected(true)}
           business={draft.server?.business_name ?? ''}
           agentName={draft.server?.name ?? ''}
           domain={draft.server?.allowed_domain ?? ''}
@@ -101,7 +120,7 @@ export default function Install() {
       </div>
 
       <SaveBar
-        visible={draft.dirty}
+        dirty={draft.dirty}
         saving={save.pending}
         canSave={!invalid}
         blockedReason={invalid ? 'Popravite domeno, da lahko shranite.' : undefined}
@@ -113,8 +132,16 @@ export default function Install() {
   );
 }
 
+interface ChecklistCardProps {
+  status: api.QueryResult<api.InstallStatus>;
+  /** the clipboard refused the code and it was only marked */
+  codeSelected: boolean;
+  /** the owner confirms by hand that the code was copied */
+  onConfirmCopied: () => void;
+}
+
 /** The checklist, built from api.getInstallStatus(). Only what the api can know is marked as done. */
-function ChecklistCard({ status }: { status: api.QueryResult<api.InstallStatus> }) {
+function ChecklistCard({ status, codeSelected, onConfirmCopied }: ChecklistCardProps) {
   const s = status.data;
 
   if (!s) {
@@ -144,7 +171,10 @@ function ChecklistCard({ status }: { status: api.QueryResult<api.InstallStatus> 
   const firstOpen = done.findIndex((d) => !d);
   const stateOf = (i: number): StepState => (done[i] ? 'done' : i === firstOpen ? 'current' : 'waiting');
 
-  const steps: ChecklistStep[] = [
+  // The browser refused the clipboard: say what really happened and let the owner tick the step by hand.
+  const markedOnly = codeSelected && !done[0];
+
+  const steps: Step[] = [
     {
       id: 'koda',
       title: 'Kopirajte kodo',
@@ -153,7 +183,14 @@ function ChecklistCard({ status }: { status: api.QueryResult<api.InstallStatus> 
         ? 'Kodo ste kopirali.'
         : heard
           ? 'Pripomoček je že vgrajen.'
-          : 'Kodo najdete spodaj, pod naslovom »Vgradite pripomoček«.',
+          : markedOnly
+            ? copyFallbackSentence({ object: 'Kodo', pronoun: 'jo' })
+            : 'Kodo najdete spodaj, pod naslovom »Vgradite pripomoček«.',
+      action: markedOnly ? (
+        <Button size="sm" onClick={onConfirmCopied}>
+          Kodo sem kopiral
+        </Button>
+      ) : undefined,
     },
     {
       id: 'domena',
@@ -169,10 +206,19 @@ function ChecklistCard({ status }: { status: api.QueryResult<api.InstallStatus> 
       state: stateOf(2),
       detail:
         s.last_conversation_at !== null
-          ? `Zadnji pogovor s te domene: ${formatRelativeDateTime(s.last_conversation_at)}`
-          : 'S te domene še ni bilo nobenega pogovora. Vstavite kodo, odprite svojo stran in preizkusite agenta.',
+          ? `Zadnji pogovor: ${formatRelativeDateTime(s.last_conversation_at)}`
+          : 'Pogovora še ni bilo. Vstavite kodo, odprite svojo stran in preizkusite agenta.',
     },
   ];
 
-  return <Checklist steps={steps} />;
+  return (
+    <Card>
+      <CardHeader
+        title="Trije koraki do delujočega agenta"
+        description="Koraki se označijo sami, ko aplikacija zazna, da so opravljeni."
+        divider
+      />
+      <StepList steps={steps} />
+    </Card>
+  );
 }
