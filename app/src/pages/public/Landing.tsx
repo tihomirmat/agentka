@@ -8,7 +8,7 @@ import './landing/landing.css';
 
 /**
  * Route "/" — the sales page. Visual style follows the reference the owner supplied
- * (Spletnost_Voice_Agent_Redesign.html); content states only what Mansa AI does per the spec.
+ * (Spletnost_Voice_Agent_Redesign.html); content states only what Agentka does per the spec.
  * Own header and footer (outside PublicShell). In-page links scroll with scrollIntoView,
  * because the app uses hash routing and "#section" would be read as a route.
  */

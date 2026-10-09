@@ -14,7 +14,7 @@ const out = resolve('preview');
 const html = readFileSync(resolve(dist, 'index.html'), 'utf8');
 const jsRel = html.match(/<script[^>]+src="\.\/(assets\/[^"]+\.js)"/)?.[1];
 const cssRel = html.match(/<link[^>]+href="\.\/(assets\/[^"]+\.css)"/)?.[1];
-const title = html.match(/<title>([^<]+)<\/title>/)?.[1] ?? 'Mansa AI';
+const title = html.match(/<title>([^<]+)<\/title>/)?.[1] ?? 'Agentka';
 if (!jsRel || !cssRel) throw new Error('Could not find the built JS/CSS in dist/index.html');
 
 let css = readFileSync(resolve(dist, cssRel), 'utf8');

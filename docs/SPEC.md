@@ -1,5 +1,7 @@
 # Mansa AI — build spec v3 (5 Oct 2026)
 
+> Name decision 9 Oct 2026: the product is called **Agentka** (domain agentka.si). "Mansa AI" below is the old working name.
+
 Replaces v2. Same product, screens, data model and stages. The only change: Mansa AI is built as its own code base and does NOT run on Base44.
 
 ## 0. Stack and hosting (new in v3)
