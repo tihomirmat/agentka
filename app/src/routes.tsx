@@ -30,10 +30,11 @@ import NotFound from '@/pages/NotFound';
  * renders only its own content. Hash routing keeps the build working from any folder.
  */
 export const router = createHashRouter([
+  // The sales page has its own header and footer.
+  { path: '/', element: <Landing /> },
   {
     element: <PublicShell />,
     children: [
-      { path: '/', element: <Landing /> },
       { path: '/cenik', element: <Pricing /> },
       { path: '/prijava', element: <Login /> },
       { path: '/registracija', element: <Register /> },

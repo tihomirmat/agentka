@@ -1,12 +1,9 @@
-import { ChevronDown } from 'lucide-react';
-import { Section, SectionHead } from './Section';
-
 /**
  * Answers to what a careful owner is likely to ask. Each answer states only what the product
  * does according to the spec — no legal, data-location or result claims, and no language
  * other than Slovenian until it has been tested. Public pages say "pomočnik", not "agent".
  */
-const QUESTIONS: { q: string; a: string }[] = [
+export const QUESTIONS: { q: string; a: string }[] = [
   {
     q: 'Ali pomočnik res govori slovensko?',
     a: 'Odgovarja po slovensko, z vikanjem in v kratkih stavkih. Preden pomočnika namestite na stran, ga preizkusite sami in presodite, ali vam ustreza.',
@@ -32,32 +29,3 @@ const QUESTIONS: { q: string; a: string }[] = [
     a: 'Uporabniški račun z vsemi podatki lahko kadar koli izbrišete v Nastavitvah. Za brezplačni preizkus vam ni treba izbrati paketa.',
   },
 ];
-
-export function Faq() {
-  return (
-    <Section labelledBy="vprasanja-naslov">
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)] lg:gap-16">
-        <SectionHead
-          id="vprasanja-naslov"
-          title="Pogosta vprašanja"
-          lead="Odgovori na vprašanja, ki si jih boste verjetno zastavili pred začetkom."
-        />
-        <div className="border-t border-border">
-          {QUESTIONS.map(({ q, a }) => (
-            <details key={q} className="group border-b border-border">
-              <summary className="flex min-w-0 list-none items-start justify-between gap-4 rounded py-4 text-md font-medium text-fg [&::-webkit-details-marker]:hidden">
-                <span className="min-w-0">{q}</span>
-                <ChevronDown
-                  size={18}
-                  aria-hidden="true"
-                  className="mt-1 shrink-0 text-fg-subtle transition-transform duration-150 group-open:rotate-180"
-                />
-              </summary>
-              <p className="max-w-prose pb-5 text-base text-fg-muted">{a}</p>
-            </details>
-          ))}
-        </div>
-      </div>
-    </Section>
-  );
-}
