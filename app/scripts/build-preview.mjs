@@ -6,7 +6,7 @@
 // preview can be opened and screenshotted exactly as it will be wrapped.
 //
 //   npm run build && node scripts/build-preview.mjs
-import { mkdirSync, readFileSync, writeFileSync, copyFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 
 const dist = resolve('dist');
@@ -38,7 +38,17 @@ ${css}
 <script type="module" src="app.js"></script>
 `;
 writeFileSync(resolve(out, 'index.html'), fragment);
-copyFileSync(resolve(dist, jsRel), resolve(out, 'app.js'));
+// Images the bundle loads as files (e.g. the logo) are embedded as data URIs, so app.js needs no neighbours.
+let js = readFileSync(resolve(dist, jsRel), 'utf8');
+let images = 0;
+js = js.replace(/new URL\("([^"]+\.(png|svg|jpg|webp))",import\.meta\.url\)\.href/g, (_, file, ext) => {
+  images++;
+  const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+  return JSON.stringify(`data:${mime};base64,${readFileSync(resolve(dirname(resolve(dist, jsRel)), file)).toString('base64')}`);
+});
+if (/import\.meta\.url/.test(js)) throw new Error('app.js still loads a file relative to itself');
+writeFileSync(resolve(out, 'app.js'), js);
+console.log(`${images} images embedded in app.js`);
 
 // Local stand-in for the host skeleton (charset + viewport + its small reset), for testing only.
 writeFileSync(

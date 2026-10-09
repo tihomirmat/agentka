@@ -116,6 +116,11 @@
   color: var(--navy);
   letter-spacing: -0.02em;
 }
+.lp .brandlogo {
+  display: block;
+  height: 42px;
+  width: auto;
+}
 .lp .brandmark {
   width: 38px;
   height: 38px;
@@ -857,6 +862,9 @@
 @media (max-width: 680px) {
   .lp .container {
     width: min(100% - 32px, var(--max));
+  }
+  .lp .brandlogo {
+    height: 32px;
   }
   .lp .nav {
     height: 66px;

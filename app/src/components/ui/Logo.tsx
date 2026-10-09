@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { BRAND } from '@/brand';
 import { cn } from '@/lib/cn';
-import { Waveform } from './Waveform';
+import icon from '@/assets/agentka-icon.png';
 
 export interface LogoProps {
   size?: 'sm' | 'md';
@@ -12,17 +12,12 @@ export interface LogoProps {
   className?: string;
 }
 
-/** Waveform mark + the product name. The name always comes from src/brand.ts. */
+/** Agentka head mark + the product name. The name always comes from src/brand.ts. */
 export function Logo({ size = 'md', to = '/', markOnly = false, className }: LogoProps) {
   const box = size === 'sm' ? 'h-6 w-6' : 'h-7 w-7';
   const content = (
     <>
-      <span
-        className={cn('inline-flex items-center justify-center rounded bg-accent text-accent-fg', box)}
-        aria-hidden="true"
-      >
-        <Waveform size={size === 'sm' ? 12 : 14} />
-      </span>
+      <img src={icon} alt="" aria-hidden="true" className={cn('shrink-0 object-contain', box)} />
       {markOnly ? (
         <span className="sr-only">{BRAND}</span>
       ) : (
