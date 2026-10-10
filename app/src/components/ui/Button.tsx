@@ -8,12 +8,12 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md';
 
 const BASE =
-  'inline-flex shrink-0 items-center justify-center gap-2 rounded font-medium whitespace-nowrap ' +
+  'inline-flex shrink-0 items-center justify-center gap-2 rounded-full font-semibold whitespace-nowrap ' +
   'select-none transition-colors duration-100 disabled:opacity-55 aria-disabled:opacity-55';
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-accent-fg hover:bg-accent-hover',
-  secondary: 'border border-border-strong bg-surface text-fg hover:bg-surface-2',
+  primary: 'bg-accent text-accent-fg shadow-xs hover:bg-accent-hover',
+  secondary: 'border border-border bg-surface text-fg hover:border-border-strong hover:bg-surface-2',
   ghost: 'text-fg-muted hover:bg-surface-2 hover:text-fg',
   danger: 'bg-danger-solid text-danger-fg hover:bg-danger-solid-hover',
 };
@@ -21,8 +21,8 @@ const VARIANTS: Record<ButtonVariant, string> = {
 // `sm` is 32px with a mouse and at least 40px on a touch screen (the same rule as the `tap` class
 // in styles/index.css); `md` is 40px everywhere.
 const SIZES: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-sm [@media(pointer:coarse)]:min-h-10',
-  md: 'h-10 px-4 text-base',
+  sm: 'h-8 px-3.5 text-sm [@media(pointer:coarse)]:min-h-10',
+  md: 'h-11 px-5 text-base',
 };
 
 /** Class string of a button, for the rare element that must look like one. */

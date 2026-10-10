@@ -45,6 +45,14 @@
     text-wrap-style: pretty;
   }
 
+  /* Big headings carry the landing's weight and tight tracking everywhere (element + class beats
+     a single utility such as font-semibold). */
+  h1.font-display,
+  h2.font-display {
+    font-weight: 800;
+    letter-spacing: -0.035em;
+  }
+
   /*
    * THE FRAME RULE. Every scrolling box is the positioning context of what is inside it.
    * Visually hidden elements (`sr-only`, the hidden native <select> of the Select primitive,

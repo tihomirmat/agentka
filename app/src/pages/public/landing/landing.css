@@ -3,25 +3,6 @@
  * (Spletnost_Voice_Agent_Redesign.html). Every rule is scoped under .lp so nothing here
  * reaches the app, the pricing page or the login pages. The page is light-only, like the reference.
  */
-@font-face {
-  font-family: 'Inter LP';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 100 900;
-  src: url(@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2) format('woff2-variations');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
-    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-@font-face {
-  font-family: 'Inter LP';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 100 900;
-  src: url(@fontsource-variable/inter/files/inter-latin-wght-normal.woff2) format('woff2-variations');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
-    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
 .lp {
   --orange: #f47a20;
   --orange-dark: #d65d09;
@@ -89,6 +70,24 @@
   width: 20px;
   height: 2px;
   background: currentColor;
+}
+
+/* header + footer used outside the landing too (SiteChrome) */
+.lp.lp-chrome {
+  min-height: 0;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: transparent;
+}
+.lp.lp-chrome .header {
+  position: static;
+}
+.lp.lp-chrome-foot {
+  min-height: 0;
+}
+.lp .navlinks .navlink[aria-current='page'] {
+  color: var(--orange-text);
 }
 
 /* header */
@@ -469,6 +468,45 @@
   font-size: 12px;
   color: #6c7a87;
   margin-top: 12px;
+}
+
+/* voice demo */
+.lp .avatar-photo {
+  background: var(--soft-blue);
+  overflow: hidden;
+}
+.lp .avatar-photo img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+.lp .wave:not(.on) i {
+  opacity: 0.45;
+}
+.lp .btn-call {
+  width: 100%;
+  padding: 16px 22px;
+  font-size: 17px;
+}
+.lp .call-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lp .call-timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 20px;
+  color: var(--navy);
+}
+.lp .demo-error {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--soft-orange);
+  color: #8a3a06;
+  font-size: 14px;
 }
 
 /* sections */

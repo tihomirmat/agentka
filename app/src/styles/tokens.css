@@ -6,52 +6,52 @@
  *   2. @media dark → :root:not([data-theme="light"])   same names, dark values
  *   3. :root[data-theme="dark"]               the same dark values again
  *
- * Neutrals are cool greys pulled slightly toward petrol (hue ≈ 195°), so they
- * sit next to the one accent without looking like a default grey ramp.
+ * Palette = the sales page (landing.css): orange #f47a20 accent, navy text, warm paper
+ * background, cool blue-grey lines. Changed 10 Oct 2026 so every screen matches the landing.
  */
 
 :root {
   /* ---- Surfaces ---- */
-  --bg: #f3f6f6; /* page background, sidebar */
+  --bg: #fbfaf7; /* page background, sidebar */
   --surface: #ffffff; /* cards, inputs, menus, dialogs */
-  --surface-2: #eaeff0; /* quiet fill: table head, hover, code */
-  --surface-3: #dbe3e5; /* stronger fill: tracks, pressed, skeleton */
+  --surface-2: #f2f5f8; /* quiet fill: table head, hover, code */
+  --surface-3: #e2e9ef; /* stronger fill: tracks, pressed, skeleton */
   --raised: #ffffff; /* things that float: menus, dialogs, toasts */
-  --raised-hover: #eaeff0; /* highlighted row inside a floating thing */
+  --raised-hover: #f2f5f8; /* highlighted row inside a floating thing */
 
   /* ---- Lines ---- */
-  --border: #d3dcde;
-  --border-strong: #81949a; /* control outlines (≥ 3:1 on --surface) */
+  --border: #dce3e9;
+  --border-strong: #7b8c9b; /* control outlines (≥ 3:1 on --surface) */
 
   /* ---- Text ---- */
-  --fg: #0e1d22;
-  --fg-muted: #43565d; /* secondary text */
-  --fg-subtle: #586a71; /* hints, meta, placeholders (still ≥ 4.5:1 on --surface) */
+  --fg: #10233a;
+  --fg-muted: #48596a; /* secondary text */
+  --fg-subtle: #5b6b7a; /* hints, meta, placeholders (still ≥ 4.5:1 on --surface) */
 
-  /* ---- Accent: deep petrol blue, the only brand colour ---- */
-  --accent: #0a6c8f;
-  --accent-hover: #08597a;
+  /* ---- Accent: Agentka orange, the only brand colour ---- */
+  --accent: #f47a20;
+  --accent-hover: #d65d09;
   --accent-fg: #ffffff; /* text on --accent */
-  --accent-soft: #e0eff4; /* selected rows, active nav, soft badges */
-  --accent-soft-fg: #074e68; /* text on --accent-soft */
+  --accent-soft: #fff2e8; /* selected rows, active nav, soft badges */
+  --accent-soft-fg: #9a4307; /* text on --accent-soft */
 
   /* ---- Semantic colours (state only, never decoration) ---- */
-  --success: #1c7549;
-  --success-soft: #e2f2e9;
+  --success: #1f7f53;
+  --success-soft: #eaf8f1;
   --warning: #8a5a06;
-  --warning-soft: #faefd6;
+  --warning-soft: #fbf0d9;
   --danger: #b02f28; /* danger as TEXT, icon, border, bar */
   --danger-hover: #93241f;
   --danger-solid: #b02f28; /* danger as a FILL (the danger button) */
   --danger-solid-hover: #93241f;
   --danger-fg: #ffffff; /* text on --danger-solid */
   --danger-soft: #fae6e4;
-  --info: #35579c;
-  --info-soft: #e5ecf8;
+  --info: #2b6d9e;
+  --info-soft: #eef5fa;
 
   /* ---- Inverse (tooltips, the admin strip) ---- */
-  --inverse: #10242b;
-  --inverse-fg: #eef3f4;
+  --inverse: #0b253c;
+  --inverse-fg: #f1f5f8;
 
   /* ---- The widget preview. It is a picture of what VISITORS see on the customer's website,
           so it does not follow our theme: these values are the same in light and dark and are
@@ -63,22 +63,20 @@
   --widget-muted: #586a71;
   --widget-border: #d3dcde;
   --widget-border-strong: #81949a;
-  --widget-default: #0a6c8f; /* used when no customer colour is passed */
+  --widget-default: #f47a20; /* used when no customer colour is passed */
 
   /* ---- Focus and overlay ---- */
-  --ring: #1487b0;
-  --overlay: rgba(14, 29, 34, 0.48);
+  --ring: #f47a20;
+  --overlay: rgba(11, 37, 60, 0.5);
 
   /* ---- Elevation: only for things that float above the page ---- */
-  --shadow-xs: 0 1px 2px rgba(14, 29, 34, 0.06);
-  --shadow-md: 0 6px 20px -6px rgba(14, 29, 34, 0.18), 0 2px 6px -2px rgba(14, 29, 34, 0.08);
-  --shadow-lg: 0 24px 56px -16px rgba(14, 29, 34, 0.3), 0 6px 16px -6px rgba(14, 29, 34, 0.12);
+  --shadow-xs: 0 1px 2px rgba(18, 53, 84, 0.06);
+  --shadow-md: 0 10px 30px -10px rgba(18, 53, 84, 0.16), 0 2px 6px -2px rgba(18, 53, 84, 0.06);
+  --shadow-lg: 0 18px 55px -12px rgba(18, 53, 84, 0.22), 0 6px 16px -6px rgba(18, 53, 84, 0.08);
 
   /* ---- Type families ---- */
-  --font-display: 'Bricolage Grotesque', 'Instrument Sans', 'Segoe UI', 'Helvetica Neue', Arial,
-    sans-serif;
-  --font-sans: 'Instrument Sans', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
-    sans-serif;
+  --font-display: 'Inter LP', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-sans: 'Inter LP', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono',
     monospace;
 
@@ -103,9 +101,9 @@
   --leading-4xl: 1.05;
 
   /* ---- Shape and rhythm ---- */
-  --radius-sm: 4px; /* chips inside controls, checkbox */
-  --radius: 6px; /* buttons, inputs, menus items */
-  --radius-lg: 10px; /* cards, dialogs, menus */
+  --radius-sm: 6px; /* chips inside controls, checkbox */
+  --radius: 12px; /* buttons, inputs, menus items */
+  --radius-lg: 20px; /* cards, dialogs, menus */
   --gutter: 1rem; /* side padding of every page; grows on wide screens */
 }
 
@@ -123,22 +121,22 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #0c1417;
-    --surface: #121c20;
-    --surface-2: #19262b;
-    --surface-3: #233339;
-    --raised: #19262b;
-    --raised-hover: #25363d;
-    --border: #25353b;
-    --border-strong: #586e76;
-    --fg: #e7eef0;
-    --fg-muted: #a9babf;
-    --fg-subtle: #82969c;
-    --accent: #56b0cf;
-    --accent-hover: #74c1dc;
-    --accent-fg: #062029;
-    --accent-soft: #11323e;
-    --accent-soft-fg: #9fd5e8;
+    --bg: #0a1622;
+    --surface: #10202e;
+    --surface-2: #172a3a;
+    --surface-3: #213649;
+    --raised: #172a3a;
+    --raised-hover: #22384b;
+    --border: #23384b;
+    --border-strong: #5f7a8f;
+    --fg: #e9eff4;
+    --fg-muted: #a9bac8;
+    --fg-subtle: #8598a8;
+    --accent: #f68a3c;
+    --accent-hover: #f8a263;
+    --accent-fg: #1d0e02;
+    --accent-soft: #3a2414;
+    --accent-soft-fg: #ffc79d;
     --success: #5fc391;
     --success-soft: #112e1f;
     --warning: #e2b25c;
@@ -149,12 +147,12 @@
     --danger-solid-hover: #cc4036;
     --danger-fg: #ffffff;
     --danger-soft: #3a1a18;
-    --info: #8fb1ec;
-    --info-soft: #17253f;
-    --inverse: #e7eef0;
-    --inverse-fg: #0e1d22;
-    --ring: #6cc3e0;
-    --overlay: rgba(3, 8, 10, 0.66);
+    --info: #8fb6e0;
+    --info-soft: #152a40;
+    --inverse: #e9eff4;
+    --inverse-fg: #0a1622;
+    --ring: #f68a3c;
+    --overlay: rgba(2, 8, 14, 0.68);
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 8px 24px -6px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 24px 56px -12px rgba(0, 0, 0, 0.72), 0 6px 16px -6px rgba(0, 0, 0, 0.5);
@@ -163,22 +161,22 @@
 }
 
 :root[data-theme='dark'] {
-  --bg: #0c1417;
-  --surface: #121c20;
-  --surface-2: #19262b;
-  --surface-3: #233339;
-  --raised: #19262b;
-  --raised-hover: #25363d;
-  --border: #25353b;
-  --border-strong: #586e76;
-  --fg: #e7eef0;
-  --fg-muted: #a9babf;
-  --fg-subtle: #82969c;
-  --accent: #56b0cf;
-  --accent-hover: #74c1dc;
-  --accent-fg: #062029;
-  --accent-soft: #11323e;
-  --accent-soft-fg: #9fd5e8;
+  --bg: #0a1622;
+  --surface: #10202e;
+  --surface-2: #172a3a;
+  --surface-3: #213649;
+  --raised: #172a3a;
+  --raised-hover: #22384b;
+  --border: #23384b;
+  --border-strong: #5f7a8f;
+  --fg: #e9eff4;
+  --fg-muted: #a9bac8;
+  --fg-subtle: #8598a8;
+  --accent: #f68a3c;
+  --accent-hover: #f8a263;
+  --accent-fg: #1d0e02;
+  --accent-soft: #3a2414;
+  --accent-soft-fg: #ffc79d;
   --success: #5fc391;
   --success-soft: #112e1f;
   --warning: #e2b25c;
@@ -189,12 +187,12 @@
   --danger-solid-hover: #cc4036;
   --danger-fg: #ffffff;
   --danger-soft: #3a1a18;
-  --info: #8fb1ec;
-  --info-soft: #17253f;
-  --inverse: #e7eef0;
-  --inverse-fg: #0e1d22;
-  --ring: #6cc3e0;
-  --overlay: rgba(3, 8, 10, 0.66);
+  --info: #8fb6e0;
+  --info-soft: #152a40;
+  --inverse: #e9eff4;
+  --inverse-fg: #0a1622;
+  --ring: #f68a3c;
+  --overlay: rgba(2, 8, 14, 0.68);
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 8px 24px -6px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 24px 56px -12px rgba(0, 0, 0, 0.72), 0 6px 16px -6px rgba(0, 0, 0, 0.5);

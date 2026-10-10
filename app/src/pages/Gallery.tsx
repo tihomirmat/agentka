@@ -217,7 +217,7 @@ export default function Gallery() {
           </ul>
         </Section>
 
-        <Section id="tipografija" title="Tipografija" note="Bricolage Grotesque za naslove, Instrument Sans za besedilo in kontrolnike, IBM Plex Mono za kodo in oznake.">
+        <Section id="tipografija" title="Tipografija" note="Inter za naslove, besedilo in kontrolnike, IBM Plex Mono za kodo in oznake.">
           <div className="flex min-w-0 flex-col gap-4">
             {TYPE_SCALE.map((t) => (
               <div key={t.name} className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-6">

@@ -1,10 +1,10 @@
-import { useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { SiteFooter, SiteHeader } from '@/components/layout/SiteChrome';
 import { BRAND } from '@/brand';
-import * as api from '@/data/api';
 import { useTrialTermsText } from './shared/trial';
+import agentIcon from '@/assets/agentka-icon.png';
 import { QUESTIONS } from './landing/faqData';
-import logo from '@/assets/agentka-logo.png';
 import './landing/landing.css';
 
 /**
@@ -16,36 +16,18 @@ import './landing/landing.css';
 export default function Landing() {
   const trial = useTrialTermsText();
   const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Other pages link here with { scrollTo: id } (the router uses the hash, so no #anchors).
+  const location = useLocation();
+  useEffect(() => {
+    const target = (location.state as { scrollTo?: string } | null)?.scrollTo;
+    if (target) document.getElementById(target)?.scrollIntoView({ block: 'start' });
+    else window.scrollTo({ top: 0 });
+  }, [location.key, location.state]);
 
   return (
-    <div className="lp">
-      <header className="header">
-        <div className="container nav">
-          <Link className="brand" to="/" aria-label={BRAND}>
-            <img className="brandlogo" src={logo} alt={BRAND} />
-          </Link>
-          <nav className="navlinks" aria-label="Glavna navigacija">
-            <button type="button" className="navlink" onClick={() => go('prednosti')}>
-              Prednosti
-            </button>
-            <button type="button" className="navlink" onClick={() => go('kako-deluje')}>
-              Kako deluje
-            </button>
-            <button type="button" className="navlink" onClick={() => go('vprasanja')}>
-              Vprašanja
-            </button>
-            <Link className="navlink" to="/cenik">
-              Cenik
-            </Link>
-            <Link className="navlink-login" to="/prijava">
-              Prijava
-            </Link>
-            <Link className="btn btn-primary btn-sm" to="/registracija">
-              Začnite brezplačno
-            </Link>
-          </nav>
-        </div>
-      </header>
+    <>
+      <SiteHeader />
+      <div className="lp">
 
       <main>
         {/* hero */}
@@ -248,115 +230,178 @@ export default function Landing() {
         </section>
       </main>
 
-      <footer className="footer">
-        <div className="container footer-inner">
-          <div>© 2026 {BRAND}</div>
-          <div className="footer-links">
-            <Link to="/cenik">Cenik</Link>
-            <Link to="/prijava">Prijava</Link>
-            <Link to="/registracija">Registracija</Link>
-          </div>
-        </div>
-      </footer>
-    </div>
+      </div>
+      <SiteFooter />
+    </>
   );
 }
 
 /* ------------------------------------------------------------------ demo */
 
-const SUGGESTIONS = ['Koliko stane striženje?', 'Kdaj ste odprti?', 'Želim termin.'];
-const GREETING = 'Pozdravljeni, sem Jan, AI pomočnik salona Lana. Vas zanimajo cene, delovni čas ali prost termin?';
+/**
+ * Public ElevenLabs agent "Agentka demo - salon Lana (agentka.si)": female Slovenian voice,
+ * max 60 s per conversation, 50 conversations a day, only agentka.si / www.agentka.si may connect.
+ * The agent id is public by design (it is what any website widget embeds).
+ */
+const DEMO_AGENT_ID = 'agent_5401m4kjqkakfnvrt2rbjq2gdgey';
+const DEMO_SECONDS = 60;
 const BARS: [number, number][] = [
   [18, 0.05], [35, 0.14], [52, 0.21], [28, 0.09], [60, 0.25], [41, 0.13], [24, 0.3],
   [49, 0.06], [34, 0.18], [56, 0.11], [30, 0.28], [45, 0.16], [20, 0.03],
 ];
 
-/** Live text demo of the FICTIONAL salon Lana (api.demoAgentReply). Nothing is stored or booked. */
-function Demo() {
-  const [question, setQuestion] = useState('');
-  const [turns, setTurns] = useState<{ visitor?: string; agent: string }>({ agent: GREETING });
-  const [busy, setBusy] = useState(false);
-  const state = useRef<api.DemoState | undefined>(undefined);
+type Phase = 'idle' | 'connecting' | 'live' | 'ended' | 'error';
 
-  const ask = async (q: string) => {
-    const text = q.trim();
-    if (!text || busy) return;
-    setBusy(true);
-    setQuestion('');
-    setTurns({ visitor: text, agent: '…' });
-    const r = await api.demoAgentReply(text, state.current);
-    state.current = r.state;
-    setTurns({ visitor: text, agent: r.text });
-    setBusy(false);
+/** Real voice conversation with the demo agent of the FICTIONAL salon Lana. */
+function Demo() {
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [speaking, setSpeaking] = useState(false);
+  const [agentLine, setAgentLine] = useState('');
+  const [visitorLine, setVisitorLine] = useState('');
+  const [left, setLeft] = useState(DEMO_SECONDS);
+  const [error, setError] = useState('');
+  const conv = useRef<{ endSession: () => Promise<void> } | null>(null);
+
+  useEffect(() => {
+    if (phase !== 'live') return;
+    const t = window.setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => window.clearInterval(t);
+  }, [phase]);
+  useEffect(() => () => void conv.current?.endSession(), []);
+
+  const start = async () => {
+    setError('');
+    setAgentLine('');
+    setVisitorLine('');
+    setLeft(DEMO_SECONDS);
+    setPhase('connecting');
+    try {
+      const { Conversation } = await import('@elevenlabs/client');
+      conv.current = await Conversation.startSession({
+        agentId: DEMO_AGENT_ID,
+        connectionType: 'websocket',
+        textOnly: false,
+        onConnect: () => setPhase('live'),
+        onDisconnect: () => {
+          conv.current = null;
+          setSpeaking(false);
+          setPhase((p) => (p === 'error' ? p : 'ended'));
+        },
+        onModeChange: ({ mode }) => setSpeaking(mode === 'speaking'),
+        onMessage: ({ message, role }) => (role === 'user' ? setVisitorLine(message) : setAgentLine(message)),
+        onError: (message) => {
+          setError(message || 'Povezava z glasovno agentko ni uspela.');
+          setPhase('error');
+        },
+      });
+    } catch (e) {
+      const name = e instanceof Error ? e.name : '';
+      setError(
+        name === 'NotAllowedError' || name === 'NotFoundError'
+          ? 'Za pogovor dovolite brskalniku uporabo mikrofona in poskusite znova.'
+          : 'Glasovne agentke trenutno ni mogoče poklicati. Poskusite znova čez trenutek.',
+      );
+      setPhase('error');
+      conv.current = null;
+    }
   };
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    void ask(question);
+  const stop = async () => {
+    await conv.current?.endSession();
+    conv.current = null;
   };
+
+  const live = phase === 'live';
+  const status =
+    phase === 'connecting'
+      ? 'Povezujem …'
+      : live
+        ? speaking
+          ? 'Ana govori'
+          : 'Ana posluša – govorite'
+        : 'Glasovna predstavitev';
 
   return (
-    <div className="demo-shell" aria-label="Predstavitev pomočnika">
+    <div className="demo-shell" aria-label="Glasovna predstavitev agentke">
       <div className="demo-head">
         <div className="window-dots" aria-hidden="true">
           <i />
           <i />
           <i />
         </div>
-        <div className="status">Preizkusite sami</div>
+        <div className="status" aria-live="polite">
+          {status}
+        </div>
       </div>
       <div className="demo-body">
         <div className="agent-top">
-          <div className="avatar" aria-hidden="true">
-            <MicIcon />
+          <div className="avatar avatar-photo" aria-hidden="true">
+            <img src={agentIcon} alt="" />
           </div>
           <div>
-            <div className="agent-name">Jan, AI pomočnik</div>
+            <div className="agent-name">Ana, AI pomočnica</div>
             <div className="agent-sub">Frizerski salon Lana (izmišljen primer)</div>
           </div>
         </div>
         <div className="wave-card">
-          <div className={`wave${busy ? ' active' : ''}`} aria-hidden="true">
+          <div className={`wave${live && speaking ? ' active' : ''}${live ? ' on' : ''}`} aria-hidden="true">
             {BARS.map(([h, d], i) => (
               <i key={i} style={{ ['--h' as string]: `${h}px`, ['--d' as string]: `${d}s` }} />
             ))}
           </div>
+
           <div className="turns" aria-live="polite">
-            {turns.visitor ? (
+            {visitorLine ? (
               <div className="turn visitor">
                 <b>Vi</b>
-                {turns.visitor}
+                {visitorLine}
               </div>
             ) : null}
             <div className="turn">
-              <b>Jan</b>
-              {turns.agent}
+              <b>Ana</b>
+              {agentLine ||
+                (phase === 'ended'
+                  ? 'Hvala za pogovor. Tako bi govorila z obiskovalci vaše spletne strani.'
+                  : 'Kliknite spodnji gumb in me vprašajte o cenah, delovnem času ali prostem terminu.')}
             </div>
           </div>
-          <form className="ask-row" onSubmit={onSubmit}>
-            <input
-              className="input"
-              type="text"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Vpišite vprašanje"
-              aria-label="Vprašanje za pomočnika"
-              maxLength={200}
-            />
-            <button className="btn btn-primary" type="submit" disabled={busy || !question.trim()}>
-              Vprašaj
-            </button>
-          </form>
-          <div className="chips">
-            {SUGGESTIONS.map((s) => (
-              <button key={s} type="button" className="chip" disabled={busy} onClick={() => void ask(s)}>
-                {s}
+
+          {error ? (
+            <p className="demo-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          {live || phase === 'connecting' ? (
+            <div className="call-row">
+              <span className="call-timer" aria-label={`Še ${left} sekund`}>
+                0:{String(left).padStart(2, '0')}
+              </span>
+              <button type="button" className="btn btn-secondary" onClick={() => void stop()} disabled={!live}>
+                Končaj pogovor
               </button>
-            ))}
+            </div>
+          ) : (
+            <button type="button" className="btn btn-primary btn-call" onClick={() => void start()}>
+              <MicGlyph /> {phase === 'ended' || phase === 'error' ? 'Pogovorite se znova' : 'Pogovorite se z Ano'}
+            </button>
+          )}
+
+          <div className="demo-note">
+            Pravi glasovni pogovor, največ 1 minuto. Brskalnik vas bo vprašal za dovoljenje za mikrofon. Salon in podatki so
+            izmišljeni, nič se ne rezervira.
           </div>
-          <div className="demo-note">Predstavitev: odgovori so vnaprej pripravljeni, glas bo na voljo ob zagonu.</div>
         </div>
       </div>
     </div>
+  );
+}
+
+function MicGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="2" />
+      <path d="M5 11a7 7 0 0014 0M12 18v3M9 21h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -433,15 +478,6 @@ function ArrowRight() {
   return (
     <svg {...svg} width={18} height={18}>
       <path d="M5 12h13M13 7l5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-function MicIcon() {
-  return (
-    <svg width="30" height="30" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <path d="M14 19.5a10 10 0 0120 0V27a10 10 0 01-20 0v-7.5z" fill="#fff" opacity=".96" />
-      <path d="M9 25v2a15 15 0 0030 0v-2M24 42v-6" stroke="#F47A20" strokeWidth="3" strokeLinecap="round" />
-      <path d="M19 23h10" stroke="#123554" strokeWidth="3" strokeLinecap="round" />
     </svg>
   );
 }

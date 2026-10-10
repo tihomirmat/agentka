@@ -282,18 +282,18 @@ await api.logout();
   let agent = await api.getAgent();
   const team = await api.listTeam();
   check('register (R27): one call saves owner name, business, website and domain', session.userName === 'Zala Kralj' && team[0].name === 'Zala Kralj' && account.name === 'Frizerski studio Zala' && account.website_url === 'https://studio-zala.si' && agent.allowed_domain === 'studio-zala.si', JSON.stringify({ session, url: account.website_url, domain: agent.allowed_domain }));
-  check('new agent is a draft with a correct greeting', agent.status === 'draft' && agent.first_message === 'Pozdravljeni, sem Jan, AI pomočnik podjetja Frizerski studio Zala. Kako vam lahko pomagam?', agent.first_message);
+  check('new agent is a draft with a correct greeting', agent.status === 'draft' && agent.first_message === 'Pozdravljeni, sem Nika, AI pomočnica podjetja Frizerski studio Zala. Kako vam lahko pomagam?', agent.first_message);
   check('greeting helper (S16): a female voice makes it "AI pomočnica"', api.defaultFirstMessage('Tina', 'Studio Zala', 'voice_sl_tina') === 'Pozdravljeni, sem Tina, AI pomočnica podjetja Studio Zala. Kako vam lahko pomagam?');
 
   // The default instructions say "AI pomočnik" / "AI pomočnica" by the voice, like the greeting;
   // instructions the person wrote are left alone.
-  check('instructions: a new agent starts with "Ste AI pomočnik podjetja …"', agent.instructions.startsWith('Ste AI pomočnik podjetja Frizerski studio Zala.'), agent.instructions.split('\n')[0]);
-  await api.updateAgent({ voice_id: 'voice_sl_tina' });
-  const femaleInstructions = (await api.getAgent()).instructions.split('\n')[0];
-  await api.updateAgent({ instructions: 'Moja navodila.' });
+  check('instructions: a new agent (female voice by default) starts with "Ste AI pomočnica podjetja …"', agent.instructions.startsWith('Ste AI pomočnica podjetja Frizerski studio Zala.'), agent.instructions.split('\n')[0]);
   await api.updateAgent({ voice_id: 'voice_sl_jan' });
+  const maleInstructions = (await api.getAgent()).instructions.split('\n')[0];
+  await api.updateAgent({ instructions: 'Moja navodila.' });
+  await api.updateAgent({ voice_id: 'voice_sl_tina' });
   const written = (await api.getAgent()).instructions;
-  check('instructions: a female voice turns the generated text into "Ste AI pomočnica …"; a hand-written text is left alone', femaleInstructions === 'Ste AI pomočnica podjetja Frizerski studio Zala.' && written === 'Moja navodila.', `${femaleInstructions} | ${written}`);
+  check('instructions: a male voice turns the generated text into "Ste AI pomočnik …"; a hand-written text is left alone', maleInstructions === 'Ste AI pomočnik podjetja Frizerski studio Zala.' && written === 'Moja navodila.', `${maleInstructions} | ${written}`);
 
   let ready = await api.getAgentReadiness();
   check('readiness (R3): without sources the agent cannot be activated', ready.canActivate === false && ready.missing.length === 1 && ready.missing[0].key === 'sources' && ready.missing[0].action.to === '/app/viri');

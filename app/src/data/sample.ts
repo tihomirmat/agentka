@@ -32,7 +32,7 @@ import type {
 } from './types';
 
 // 2: agent.paused_by / pause_reasons, source.note, voices named by character.
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 /* ------------------------------------------------------------ date helpers */
 
@@ -140,9 +140,9 @@ export const SAMPLE_COST_PER_MINUTE_EUR = 0.09;
  * so choosing a voice never looks like renaming the agent.
  */
 export const SAMPLE_VOICES: Voice[] = [
-  { id: 'voice_sl_jan', name: 'Moški glas, umirjen', description: '', gender: 'm' },
   { id: 'voice_sl_tina', name: 'Ženski glas, topel', description: '', gender: 'f' },
   { id: 'voice_sl_ana', name: 'Ženski glas, živahen', description: '', gender: 'f' },
+  { id: 'voice_sl_jan', name: 'Moški glas, umirjen', description: '', gender: 'm' },
   { id: 'voice_sl_peter', name: 'Moški glas, globok', description: '', gender: 'm' },
 ];
 
@@ -162,6 +162,7 @@ export function defaultFirstMessage(agentName: string, businessName: string, voi
  * website), not a colour of our interface — the only hex values outside tokens.css.
  */
 export const WIDGET_COLORS: { key: string; name: string; hex: string }[] = [
+  { key: 'orange', name: 'Agentka oranžna', hex: '#F47A20' },
   { key: 'petrol', name: 'Petrolejsko modra', hex: '#0A6C8F' },
   { key: 'ink', name: 'Temno siva', hex: '#1F2A30' },
   { key: 'forest', name: 'Gozdno zelena', hex: '#1F6B4A' },
@@ -229,7 +230,7 @@ function transcript(durationSec: number, lines: string[]): TranscriptTurn[] {
   });
 }
 
-const HELLO = 'Pozdravljeni, sem Jan, AI pomočnik agencije Spletnost. Kako vam lahko pomagam?';
+const HELLO = 'Pozdravljeni, sem Nika, AI pomočnica agencije Spletnost. Kako vam lahko pomagam?';
 
 /* ------------------------------------------------------- Spletnost account */
 
@@ -917,18 +918,18 @@ function buildSpletnost(now: Date) {
   const agent: Agent = {
     id: SPLETNOST_AGENT,
     account_id: SPLETNOST_ID,
-    name: 'Jan',
+    name: 'Nika',
     business_name: 'Spletnost',
     elevenlabs_agent_id: 'agent_sample_7f3k2',
-    voice_id: 'voice_sl_jan',
+    voice_id: 'voice_sl_tina',
     language: 'sl',
     first_message: HELLO,
-    instructions: defaultInstructions('Spletnost', 'voice_sl_jan'),
+    instructions: defaultInstructions('Spletnost', 'voice_sl_tina'),
     status: 'active',
     paused_by: null,
     pause_reasons: [],
     allowed_domain: 'spletnost.si',
-    widget_accent_color: '#0A6C8F',
+    widget_accent_color: '#F47A20',
     widget_text_input: true,
     widget_position: 'bottom-right',
     kb_folder_id: 'kb_sample_spletnost',
@@ -1601,18 +1602,18 @@ export function createEmptyAccountBundle(
   const agent: Agent = {
     id: agentId,
     account_id: accountId,
-    name: 'Jan',
+    name: 'Nika',
     business_name: input.businessName,
     elevenlabs_agent_id: null,
-    voice_id: 'voice_sl_jan',
+    voice_id: 'voice_sl_tina',
     language: 'sl',
-    first_message: defaultFirstMessage('Jan', input.businessName, 'voice_sl_jan'),
-    instructions: defaultInstructions(input.businessName, 'voice_sl_jan'),
+    first_message: defaultFirstMessage('Nika', input.businessName, 'voice_sl_tina'),
+    instructions: defaultInstructions(input.businessName, 'voice_sl_tina'),
     status: 'draft',
     paused_by: null,
     pause_reasons: [],
     allowed_domain: input.allowedDomain,
-    widget_accent_color: '#0A6C8F',
+    widget_accent_color: '#F47A20',
     widget_text_input: true,
     widget_position: 'bottom-right',
     kb_folder_id: null,
