@@ -11,11 +11,11 @@ export const LEGAL_VERSION = '2026-11-11';
 
 /** The provider (controller for agentka.si, processor for the customers' callers). */
 export const COMPANY = {
-  name: '__COMPANY_NAME__',
-  address: '__COMPANY_ADDRESS__',
-  taxId: '__COMPANY_TAX_ID__',
-  regNo: '__COMPANY_REG_NO__',
-  vat: '__COMPANY_VAT__',
+  name: 'Spletni marketing, Tihomir Matijević s.p.',
+  address: 'Trg borcev NOB 18, 1431 Dol pri Hrastniku',
+  taxId: 'SI21302413',
+  regNo: '8346666000',
+  vat: 'zavezanec za DDV',
   email: '__COMPANY_EMAIL__',
 };
 
