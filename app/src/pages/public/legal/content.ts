@@ -16,7 +16,7 @@ export const COMPANY = {
   taxId: 'SI21302413',
   regNo: '8346666000',
   vat: 'zavezanec za DDV',
-  email: '__COMPANY_EMAIL__',
+  email: 'tihomir@spletnost.si',
 };
 
 export interface Subprocessor {
