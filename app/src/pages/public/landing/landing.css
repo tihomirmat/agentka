@@ -509,6 +509,85 @@
   font-size: 14px;
 }
 
+.lp .demo-note a {
+  color: inherit;
+  text-decoration: underline;
+}
+.lp .demo-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.lp .demo-tab {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--navy);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lp .demo-tab.on {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
+}
+.lp .demo-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.lp .demo-tab:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+.lp .demo-more {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lp .demo-more p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+.lp .demo-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+.lp .demo-input:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 1px;
+}
+.lp .demo-consent {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.lp .demo-consent input {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--orange);
+  flex: none;
+}
+.lp .demo-consent a {
+  color: var(--orange-text);
+  text-decoration: underline;
+}
+
 /* sections */
 .lp .section {
   padding: 90px 0;

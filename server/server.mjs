@@ -48,6 +48,17 @@ db.exec(`
     ip TEXT NOT NULL DEFAULT '',
     mail_status TEXT NOT NULL DEFAULT 'pending'
   )`);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS demo_kontakti (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    email TEXT NOT NULL,
+    soglasje_verzija TEXT NOT NULL,
+    mail_status TEXT NOT NULL DEFAULT 'pending'
+  )`);
+const insertDemo = db.prepare('INSERT INTO demo_kontakti (created_at, email, soglasje_verzija) VALUES (?, ?, ?)');
+const setDemoMailStatus = db.prepare('UPDATE demo_kontakti SET mail_status = ? WHERE id = ?');
+const purgeDemo = db.prepare('DELETE FROM demo_kontakti WHERE created_at < ?');
 const insertRow = db.prepare(
   `INSERT INTO prijave (created_at, ime, podjetje, email, spletna_stran, soglasje_verzija, soglasje_cas, ip)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -57,6 +68,7 @@ const purgeOld = db.prepare(`DELETE FROM prijave WHERE created_at < ?`);
 
 function purge() {
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000).toISOString();
+  purgeDemo.run(cutoff);
   const r = purgeOld.run(cutoff);
   if (r.changes) console.log(`retention: deleted ${r.changes} sign-ups older than ${RETENTION_DAYS} days`);
 }
@@ -232,6 +244,44 @@ async function handleSignup(req, res) {
   return json(res, 200, { ok: true });
 }
 
+/** Demo e-mail: a visitor unlocks a second demo call by leaving an e-mail (with consent). */
+async function handleDemoEmail(req, res) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',').pop().trim();
+  let body;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    return json(res, 400, { ok: false, message: 'Napačna zahteva.' });
+  }
+  if (!body || typeof body !== 'object') return json(res, 400, { ok: false, message: 'Napačna zahteva.' });
+  if (clean(body.website_hp, 200)) return json(res, 200, { ok: true });
+  if (limited(ip)) return json(res, 429, { ok: false, message: 'Preveč poskusov. Poskusite znova čez eno uro.' });
+  const email = clean(body.email, 200).toLowerCase();
+  if (!EMAIL_RE.test(email)) return json(res, 400, { ok: false, errors: { email: 'E-naslov ni pravilno zapisan. Primer: ime@podjetje.si' } });
+  if (body.soglasje !== true) return json(res, 400, { ok: false, errors: { soglasje: 'Za nov pogovor potrdite soglasje.' } });
+  const version = /^\d{4}-\d{2}-\d{2}$/.test(String(body.soglasje_verzija)) ? body.soglasje_verzija : CONSENT_VERSION;
+  const { lastInsertRowid } = insertDemo.run(new Date().toISOString(), email, version);
+  const id = Number(lastInsertRowid);
+  console.log(`demo e-mail #${id} saved`);
+  let status = 'skipped: no RESEND_API_KEY or NOTIFY_EMAIL';
+  if (RESEND_API_KEY && NOTIFY_EMAIL) {
+    try {
+      await sendMail({
+        to: NOTIFY_EMAIL,
+        replyTo: email,
+        subject: `Nov kontakt iz demo pogovora: ${email}`,
+        text: `Obiskovalec je po demo pogovoru z Ano pustil e-naslov: ${email}\nSoglasje za informacije o storitvi: da (${version}).`,
+        html: `<p>Obiskovalec je po demo pogovoru z Ano pustil e-naslov: <b>${esc(email)}</b></p><p style="color:#48596a">Soglasje za informacije o storitvi: da (${esc(version)}).</p>`,
+      });
+      status = 'owner ok';
+    } catch (e) {
+      status = `owner failed: ${e.message}`;
+    }
+  }
+  setDemoMailStatus.run(status, id);
+  return json(res, 200, { ok: true });
+}
+
 function serveStatic(req, res) {
   let path;
   try {
@@ -275,6 +325,13 @@ const server = http.createServer((req, res) => {
     return handleSignup(req, res).catch((e) => {
       console.error('sign-up error', e);
       json(res, 500, { ok: false, message: 'Prijave ni bilo mogoče shraniti. Poskusite znova.' });
+    });
+  }
+  if (url === '/api/demo-email') {
+    if (req.method !== 'POST') return json(res, 405, { ok: false });
+    return handleDemoEmail(req, res).catch((e) => {
+      console.error('demo e-mail error', e);
+      json(res, 500, { ok: false, message: 'Pošiljanje ni uspelo. Poskusite znova.' });
     });
   }
   if (url === '/api/health') return json(res, 200, { ok: true });

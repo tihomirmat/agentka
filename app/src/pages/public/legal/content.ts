@@ -91,6 +91,7 @@ export const PRIVACY: LegalSection[] = [
       'Prijava (obrazec »Začnite brezplačno«): ime in priimek, ime podjetja, e-naslov in po želji naslov spletne strani. Namen: da se vam oglasimo in dogovorimo za začetek uporabe storitve. Pravna podlaga: ukrepi pred sklenitvijo pogodbe na vašo zahtevo (člen 6(1)(b) GDPR).',
       'Uporabniški račun in naročnina: podatki o podjetju, kontaktni podatki, nastavitve pomočnika, podatki o plačilih. Namen: izvajanje pogodbe in izdaja računov. Pravna podlaga: pogodba (člen 6(1)(b)) in zakonske obveznosti (člen 6(1)(c)).',
       'Glasovni preizkus na prvi strani: vaš glas se med pogovorom pretaka v obdelavo, shrani se prepis pogovora. Namen: predstavitev storitve. Pravna podlaga: vaše dejanje, ko pogovor sami začnete (člen 6(1)(a) GDPR). Posnetka glasu ne hranimo.',
+      'E-naslov po glasovnem preizkusu: če za dodaten pogovor vpišete e-naslov, ga uporabimo za pošiljanje informacij o storitvi. Pravna podlaga: vaša privolitev (člen 6(1)(a) GDPR), ki jo lahko kadarkoli prekličete.',
       'Tehnični podatki: strežnik začasno obdela naslov IP za zaščito pred zlorabami (omejitev števila poskusov). Naslova IP ne shranjujemo.',
     ],
   },
@@ -99,6 +100,7 @@ export const PRIVACY: LegalSection[] = [
     list: [
       'Prijave: dokler ne zahtevate izbrisa, najdlje 2 leti, nato se samodejno izbrišejo.',
       'Prepisi glasovnega preizkusa: 30 dni.',
+      'E-naslov po glasovnem preizkusu: do preklica privolitve, najdlje 2 leti.',
       'Podatki uporabniškega računa: ves čas trajanja naročnine in največ 90 dni po njenem koncu; računovodske listine toliko časa, kot zahteva zakon.',
     ],
   },

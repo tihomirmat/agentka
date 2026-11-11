@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { SiteFooter, SiteHeader } from '@/components/layout/SiteChrome';
 import { BRAND } from '@/brand';
 import { useTrialTermsText } from './shared/trial';
 import agentIcon from '@/assets/agentka-icon.png';
 import { QUESTIONS } from './landing/faqData';
+import { LEGAL_VERSION } from './legal/content';
 import './landing/landing.css';
 
 /**
@@ -239,11 +240,34 @@ export default function Landing() {
 /* ------------------------------------------------------------------ demo */
 
 /**
- * Public ElevenLabs agent "Agentka demo - salon Lana (agentka.si)": female Slovenian voice,
+ * Public ElevenLabs agents "Agentka demo - … (agentka.si)" (salon, tiles, real estate): female Slovenian voice,
  * max 60 s per conversation, 50 conversations a day, only agentka.si / www.agentka.si may connect.
  * The agent id is public by design (it is what any website widget embeds).
  */
-const DEMO_AGENT_ID = 'agent_5401m4kjqkakfnvrt2rbjq2gdgey';
+/** Three demo agents, same voice and rules, different (fictional) businesses. */
+const DEMOS = [
+  {
+    key: 'salon',
+    label: 'Frizerski salon',
+    agentId: 'agent_5401m4kjqkakfnvrt2rbjq2gdgey',
+    sub: 'Frizerski salon Lana (izmišljen primer)',
+    hint: 'Kliknite spodnji gumb in me vprašajte o cenah, delovnem času ali prostem terminu.',
+  },
+  {
+    key: 'ploscice',
+    label: 'Polaganje ploščic',
+    agentId: 'agent_5701m769y2qnfd2s3n257k79gbzw',
+    sub: 'Keramika Novak (izmišljen primer)',
+    hint: 'Kliknite spodnji gumb in me vprašajte o ceni na kvadratni meter ali o terminu za brezplačen ogled.',
+  },
+  {
+    key: 'nepremicnine',
+    label: 'Nepremičnine',
+    agentId: 'agent_1301m76a16p7fzfbat6thyj7zkfz',
+    sub: 'Nepremičninska agencija Dom (izmišljen primer)',
+    hint: 'Kliknite spodnji gumb in mi povejte, kakšno stanovanje ali hišo iščete.',
+  },
+] as const;
 const DEMO_SECONDS = 60;
 const BARS: [number, number][] = [
   [18, 0.05], [35, 0.14], [52, 0.21], [28, 0.09], [60, 0.25], [41, 0.13], [24, 0.3],
@@ -252,7 +276,25 @@ const BARS: [number, number][] = [
 
 type Phase = 'idle' | 'connecting' | 'live' | 'ended' | 'error';
 
-/** Real voice conversation with the demo agent of the FICTIONAL salon Lana. */
+/** One free demo call per browser; a second one after the visitor leaves an e-mail. */
+const CALLS_KEY = 'agentka:demo-calls';
+const EMAIL_KEY = 'agentka:demo-email';
+function readNumber(key: string): number {
+  try {
+    return Number(window.localStorage.getItem(key)) || 0;
+  } catch {
+    return 0;
+  }
+}
+function writeNumber(key: string, value: number) {
+  try {
+    window.localStorage.setItem(key, String(value));
+  } catch {
+    // storage blocked: the limit simply resets on reload
+  }
+}
+
+/** Real voice conversation with one of the FICTIONAL demo businesses. */
 function Demo() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [speaking, setSpeaking] = useState(false);
@@ -261,6 +303,12 @@ function Demo() {
   const [left, setLeft] = useState(DEMO_SECONDS);
   const [error, setError] = useState('');
   const conv = useRef<{ endSession: () => Promise<void> } | null>(null);
+  const [demoIndex, setDemoIndex] = useState(0);
+  const demo = DEMOS[demoIndex] ?? DEMOS[0];
+  const [callsUsed, setCallsUsed] = useState(() => readNumber(CALLS_KEY));
+  const [emailGiven, setEmailGiven] = useState(() => readNumber(EMAIL_KEY) > 0);
+  const callsAllowed = 1 + (emailGiven ? 1 : 0);
+  const canCall = callsUsed < callsAllowed;
 
   useEffect(() => {
     if (phase !== 'live') return;
@@ -278,10 +326,16 @@ function Demo() {
     try {
       const { Conversation } = await import('@elevenlabs/client');
       conv.current = await Conversation.startSession({
-        agentId: DEMO_AGENT_ID,
+        agentId: demo.agentId,
         connectionType: 'websocket',
         textOnly: false,
-        onConnect: () => setPhase('live'),
+        onConnect: () => {
+          setPhase('live');
+          setCallsUsed((n) => {
+            writeNumber(CALLS_KEY, n + 1);
+            return n + 1;
+          });
+        },
         onDisconnect: () => {
           conv.current = null;
           setSpeaking(false);
@@ -333,13 +387,33 @@ function Demo() {
         </div>
       </div>
       <div className="demo-body">
+        <div className="demo-tabs" role="group" aria-label="Izberite primer">
+          {DEMOS.map((d, i) => (
+            <button
+              key={d.key}
+              type="button"
+              className={`demo-tab${i === demoIndex ? ' on' : ''}`}
+              aria-pressed={i === demoIndex}
+              disabled={live || phase === 'connecting'}
+              onClick={() => {
+                setDemoIndex(i);
+                setAgentLine('');
+                setVisitorLine('');
+                setError('');
+                setPhase('idle');
+              }}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
         <div className="agent-top">
           <div className="avatar avatar-photo" aria-hidden="true">
             <img src={agentIcon} alt="" />
           </div>
           <div>
             <div className="agent-name">Ana, AI pomočnica</div>
-            <div className="agent-sub">Frizerski salon Lana (izmišljen primer)</div>
+            <div className="agent-sub">{demo.sub}</div>
           </div>
         </div>
         <div className="wave-card">
@@ -361,7 +435,7 @@ function Demo() {
               {agentLine ||
                 (phase === 'ended'
                   ? 'Hvala za pogovor. Tako bi govorila z obiskovalci vaše spletne strani.'
-                  : 'Kliknite spodnji gumb in me vprašajte o cenah, delovnem času ali prostem terminu.')}
+                  : demo.hint)}
             </div>
           </div>
 
@@ -380,19 +454,110 @@ function Demo() {
                 Končaj pogovor
               </button>
             </div>
-          ) : (
+          ) : canCall ? (
             <button type="button" className="btn btn-primary btn-call" onClick={() => void start()}>
               <MicGlyph /> {phase === 'ended' || phase === 'error' ? 'Pogovorite se znova' : 'Pogovorite se z Ano'}
             </button>
+          ) : emailGiven ? (
+            <div className="demo-more">
+              <p>Porabili ste oba predstavitvena pogovora. Za pomočnika na vaši strani se prijavite brezplačno.</p>
+              <Link className="btn btn-primary btn-call" to="/registracija">
+                Začnite brezplačno
+              </Link>
+            </div>
+          ) : (
+            <DemoEmailForm
+              onDone={() => {
+                writeNumber(EMAIL_KEY, 1);
+                setEmailGiven(true);
+              }}
+            />
           )}
 
           <div className="demo-note">
-            Pravi glasovni pogovor, največ 1 minuto. Brskalnik vas bo vprašal za dovoljenje za mikrofon. Salon in podatki so
-            izmišljeni, nič se ne rezervira.
+            Pravi glasovni pogovor, največ 1 minuto. Brskalnik vas bo vprašal za dovoljenje za mikrofon. Podjetja in podatki
+            so izmišljeni, nič se ne rezervira. Pogovor obdela ElevenLabs (ZDA), prepis se hrani 30 dni, posnetek glasu se ne
+            shrani.{' '}
+            <Link to="/zasebnost">Politika zasebnosti</Link>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Shown after the free demo call: an e-mail (with consent) unlocks one more call. */
+function DemoEmailForm({ onDone }: { onDone: () => void }) {
+  const [email, setEmail] = useState('');
+  const [consent, setConsent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
+      setMsg('E-naslov ni pravilno zapisan. Primer: ime@podjetje.si');
+      return;
+    }
+    if (!consent) {
+      setMsg('Za nov pogovor potrdite soglasje.');
+      return;
+    }
+    setBusy(true);
+    setMsg('');
+    try {
+      const res = await fetch('/api/demo-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), soglasje: true, soglasje_verzija: LEGAL_VERSION, website_hp: '' }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; errors?: Record<string, string> };
+      if (res.ok && body.ok) onDone();
+      else setMsg((body.errors && Object.values(body.errors)[0]) || body.message || 'Pošiljanje ni uspelo. Poskusite znova.');
+    } catch {
+      setMsg('Povezava s strežnikom ni uspela. Poskusite znova.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="demo-more" onSubmit={(e) => void submit(e)} noValidate>
+      <p>
+        <b>Želite še en pogovor?</b> Vpišite e-naslov in odklenite še eno minuto z Ano.
+      </p>
+      <input
+        className="demo-input"
+        type="email"
+        inputMode="email"
+        autoComplete="email"
+        placeholder="ime@podjetje.si"
+        aria-label="E-naslov"
+        value={email}
+        onChange={(e) => {
+          setEmail(e.target.value);
+          setMsg('');
+        }}
+      />
+      <label className="demo-consent">
+        <input type="checkbox" checked={consent} onChange={(e) => {
+            setConsent(e.target.checked);
+            setMsg('');
+          }} />
+        <span>
+          Strinjam se, da mi {BRAND} na ta naslov pošlje informacije o storitvi. Odjava je mogoča kadarkoli. Več v{' '}
+          <Link to="/zasebnost">politiki zasebnosti</Link>.
+        </span>
+      </label>
+      {msg ? (
+        <p className="demo-error" role="alert">
+          {msg}
+        </p>
+      ) : null}
+      <button type="submit" className="btn btn-primary btn-call" disabled={busy}>
+        <MicGlyph /> {busy ? 'Pošiljam …' : 'Odklenite še en pogovor'}
+      </button>
+    </form>
   );
 }
 
