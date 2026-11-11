@@ -2,17 +2,16 @@ import { useRef, useState, type FormEvent, type RefObject } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BRAND } from '@/brand';
 import * as api from '@/data/api';
-import { TRIAL, WIZARD_STEPS } from '@/data/labels';
-import { Button, Card, CardBody, CardFooter, CardHeader, Field, Input, Notice, StepList } from '@/components/ui';
-import { PasswordInput } from './auth/PasswordInput';
-import { checkWebsite, emailError, PASSWORD_MIN } from './auth/validation';
+import { WIZARD_STEPS } from '@/data/labels';
+import { Button, Card, CardBody, CardFooter, CardHeader, Checkbox, Field, Input, Notice, StepList } from '@/components/ui';
+import { checkWebsite, emailError } from './auth/validation';
+import { LEGAL_VERSION } from './legal/content';
 import { TEXT_LINK } from './shared/links';
-import { useTrialTermsText } from './shared/trial';
 
-type FieldName = 'ownerName' | 'businessName' | 'website' | 'email' | 'password';
-const ORDER: FieldName[] = ['ownerName', 'businessName', 'website', 'email', 'password'];
+type FieldName = 'ime' | 'podjetje' | 'spletna_stran' | 'email' | 'soglasje';
+const ORDER: FieldName[] = ['ime', 'podjetje', 'spletna_stran', 'email', 'soglasje'];
 
-/** What each of the five wizard steps does (SPEC §3.3). The names come from labels.ts. */
+/** What each of the five setup steps does (SPEC §3.3). The names come from labels.ts. */
 const NEXT_STEPS: Record<number, string> = {
   1: `Vpišete naslov, ${BRAND} uvozi strani. Tiste, ki jih pomočnik ne sme uporabiti, izklopite.`,
   2: 'Določite ime pomočnika, pozdrav, glas in jezik.',
@@ -23,51 +22,57 @@ const NEXT_STEPS: Record<number, string> = {
 
 type Errors = Partial<Record<FieldName, string>>;
 
-function validate(v: Record<FieldName, string>): Errors {
+function validate(v: { ime: string; podjetje: string; spletna_stran: string; email: string; soglasje: boolean }): Errors {
   const errors: Errors = {};
-  if (!v.ownerName.trim()) errors.ownerName = 'Vpišite svoje ime in priimek.';
-  if (!v.businessName.trim()) errors.businessName = 'Vpišite ime podjetja.';
-  // The website may be left empty: the first step of the setup asks for it again.
-  if (v.website.trim()) {
-    const site = checkWebsite(v.website);
-    if (!site.ok) errors.website = site.message;
+  if (!v.ime.trim()) errors.ime = 'Vpišite svoje ime in priimek.';
+  if (!v.podjetje.trim()) errors.podjetje = 'Vpišite ime podjetja.';
+  if (v.spletna_stran.trim()) {
+    const site = checkWebsite(v.spletna_stran);
+    if (!site.ok) errors.spletna_stran = site.message;
   }
   const mail = emailError(v.email);
   if (mail) errors.email = mail;
-  if (!v.password) errors.password = `Vpišite geslo. Vsaj ${PASSWORD_MIN} znakov.`;
-  else if (v.password.length < PASSWORD_MIN) errors.password = `Geslo naj ima vsaj ${PASSWORD_MIN} znakov.`;
+  if (!v.soglasje) errors.soglasje = 'Za prijavo potrdite, da se strinjate s pogoji.';
   return errors;
 }
 
+/** A random password for the browser-only preview account (stage 1); nobody needs to know it. */
+function previewPassword(): string {
+  const bytes = new Uint8Array(12);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /**
- * Sign-up. api.register creates an empty trial account in the browser (stage 1) from the five
- * answers of this form in ONE call — the person's own name (becomes the owner), the business
- * name, the website (optional), the e-mail and the password — and signs the person in; then
- * the person continues in the setup wizard at step 1.
+ * Sign-up ("Začnite brezplačno"). Sends name, business, website (optional) and e-mail with the
+ * consent to the Agentka server (api.submitSignup): it is saved in the EU, the owner gets an
+ * e-mail and the visitor a confirmation. After that the visitor may open the app preview, which
+ * still runs only in this browser (api.register).
  */
 export default function Register() {
   const navigate = useNavigate();
-  const trial = useTrialTermsText();
-  const [ownerName, setOwnerName] = useState('');
-  const [businessName, setBusinessName] = useState('');
-  const [website, setWebsite] = useState('');
+  const [ime, setIme] = useState('');
+  const [podjetje, setPodjetje] = useState('');
+  const [spletnaStran, setSpletnaStran] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [soglasje, setSoglasje] = useState(false);
+  const [honeypot, setHoneypot] = useState('');
   const [attempted, setAttempted] = useState(false);
   const [touched, setTouched] = useState<Partial<Record<FieldName, boolean>>>({});
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   const refs: Record<FieldName, RefObject<HTMLInputElement>> = {
-    ownerName: useRef<HTMLInputElement>(null),
-    businessName: useRef<HTMLInputElement>(null),
-    website: useRef<HTMLInputElement>(null),
+    ime: useRef<HTMLInputElement>(null),
+    podjetje: useRef<HTMLInputElement>(null),
+    spletna_stran: useRef<HTMLInputElement>(null),
     email: useRef<HTMLInputElement>(null),
-    password: useRef<HTMLInputElement>(null),
+    soglasje: useRef<HTMLInputElement>(null),
   };
 
-  const signUp = api.useAction(api.register);
+  const send = api.useAction(api.submitSignup);
+  const preview = api.useAction(api.register);
 
-  const errors = validate({ ownerName, businessName, website, email, password });
-  // An error shows after the first attempt to submit, or once a field with text has been left.
+  const errors = validate({ ime, podjetje, spletna_stran: spletnaStran, email, soglasje });
   const shown = (name: FieldName): string | undefined => (attempted || touched[name] ? errors[name] : undefined);
   const leave = (name: FieldName, filled: boolean) => {
     if (filled) setTouched((t) => ({ ...t, [name]: true }));
@@ -81,13 +86,27 @@ export default function Register() {
       refs[first].current?.focus();
       return;
     }
-    const site = checkWebsite(website);
-    const session = await signUp.run({
-      ownerName: ownerName.trim(),
-      businessName: businessName.trim(),
-      website: site.ok ? site.url : '',
+    const site = checkWebsite(spletnaStran);
+    const ok = await send.run({
+      ime: ime.trim(),
+      podjetje: podjetje.trim(),
       email: email.trim(),
-      password,
+      spletna_stran: spletnaStran.trim() && site.ok ? site.url : '',
+      soglasje: true,
+      soglasje_verzija: LEGAL_VERSION,
+      website_hp: honeypot,
+    });
+    if (ok) setSentTo(email.trim());
+  }
+
+  async function openPreview() {
+    const site = checkWebsite(spletnaStran);
+    const session = await preview.run({
+      ownerName: ime.trim(),
+      businessName: podjetje.trim(),
+      website: spletnaStran.trim() && site.ok ? site.url : '',
+      email: email.trim(),
+      password: previewPassword(),
     });
     if (session) navigate('/zacetek/1', { replace: true });
   }
@@ -95,102 +114,162 @@ export default function Register() {
   return (
     <div className="page py-10 sm:py-16">
       <div className="mx-auto max-w-4xl">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-fg">Ustvarite račun</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-fg">Prijava za Agentko</h1>
         <p className="mt-1 max-w-prose text-base text-fg-muted">
-          Vpišite osnovne podatke, nato vas čarovnik v petih korakih pelje do pomočnika na vaši spletni strani.
-          {trial ? ` ${TRIAL.name}: ${trial}.` : ''}
+          Vpišite osnovne podatke. Oglasimo se vam in skupaj postavimo pomočnika na vašo spletno stran.
         </p>
 
         <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,32rem)_minmax(0,1fr)] lg:items-start lg:gap-12">
           <div className="min-w-0">
-            <Card>
-              <CardBody>
-                <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-                  <Field label="Vaše ime in priimek" error={shown('ownerName')}>
-                    <Input
-                      ref={refs.ownerName}
-                      autoComplete="name"
-                      value={ownerName}
-                      onChange={(e) => setOwnerName(e.target.value)}
-                      onBlur={() => leave('ownerName', ownerName.trim() !== '')}
-                    />
-                  </Field>
-                  <Field label="Ime podjetja" error={shown('businessName')}>
-                    <Input
-                      ref={refs.businessName}
-                      autoComplete="organization"
-                      value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
-                      onBlur={() => leave('businessName', businessName.trim() !== '')}
-                    />
-                  </Field>
-                  <Field
-                    label="Naslov spletne strani"
-                    optional
-                    hint="Z https:// ali brez. Primer: vasepodjetje.si. Lahko ga vpišete tudi v prvem koraku nastavitve."
-                    error={shown('website')}
-                  >
-                    <Input
-                      ref={refs.website}
-                      type="text"
-                      inputMode="url"
-                      autoComplete="url"
-                      autoCapitalize="none"
-                      spellCheck={false}
-                      placeholder="vasepodjetje.si"
-                      value={website}
-                      onChange={(e) => setWebsite(e.target.value)}
-                      onBlur={() => leave('website', website.trim() !== '')}
-                    />
-                  </Field>
-                  <Field label="E-naslov" hint="S tem naslovom se boste prijavljali." error={shown('email')}>
-                    <Input
-                      ref={refs.email}
-                      type="email"
-                      inputMode="email"
-                      autoComplete="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      onBlur={() => leave('email', email.trim() !== '')}
-                    />
-                  </Field>
-                  <Field label="Geslo" hint={`Vsaj ${PASSWORD_MIN} znakov.`} error={shown('password')}>
-                    <PasswordInput
-                      ref={refs.password}
-                      autoComplete="new-password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      onBlur={() => leave('password', password !== '')}
-                    />
-                  </Field>
-
-                  {signUp.error ? (
+            {sentTo ? (
+              <Card>
+                <CardBody className="flex flex-col gap-4">
+                  <h2 className="font-display text-xl font-semibold text-fg" data-testid="signup-done">
+                    Hvala, prijava je oddana
+                  </h2>
+                  <p className="text-base text-fg-muted">
+                    Na <strong className="text-fg">{sentTo}</strong> smo poslali potrditev. Oglasimo se vam v
+                    najkrajšem času.
+                  </p>
+                  <p className="text-sm text-fg-muted">
+                    Medtem si lahko ogledate predogled aplikacije. Deluje z vzorčnimi podatki in samo v tem brskalniku.
+                  </p>
+                  {preview.error ? (
                     <Notice size="sm" tone="danger">
-                      {signUp.error}
+                      {preview.error}
                     </Notice>
                   ) : null}
-                  <Button type="submit" variant="primary" loading={signUp.pending} block>
-                    Ustvarite račun in začnite nastavitev
+                  <Button variant="secondary" onClick={openPreview} loading={preview.pending}>
+                    Oglejte si predogled aplikacije
                   </Button>
-                </form>
-              </CardBody>
-              <CardFooter className="justify-start rounded-b-lg bg-surface-2 text-sm text-fg-muted">
-                <p>Predogled: registracija je simulirana. Račun nastane samo v tem brskalniku.</p>
-              </CardFooter>
-            </Card>
-            <p className="mt-4 text-sm text-fg-muted">
-              Že imate račun?{' '}
-              <Link to="/prijava" className={TEXT_LINK}>
-                Prijavite se
-              </Link>
-            </p>
+                </CardBody>
+              </Card>
+            ) : (
+              <Card>
+                <CardBody>
+                  <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+                    <Field label="Vaše ime in priimek" error={shown('ime')}>
+                      <Input
+                        ref={refs.ime}
+                        name="ime"
+                        autoComplete="name"
+                        value={ime}
+                        onChange={(e) => setIme(e.target.value)}
+                        onBlur={() => leave('ime', ime.trim() !== '')}
+                      />
+                    </Field>
+                    <Field label="Ime podjetja" error={shown('podjetje')}>
+                      <Input
+                        ref={refs.podjetje}
+                        name="podjetje"
+                        autoComplete="organization"
+                        value={podjetje}
+                        onChange={(e) => setPodjetje(e.target.value)}
+                        onBlur={() => leave('podjetje', podjetje.trim() !== '')}
+                      />
+                    </Field>
+                    <Field
+                      label="Naslov spletne strani"
+                      optional
+                      hint="Z https:// ali brez. Primer: vasepodjetje.si"
+                      error={shown('spletna_stran')}
+                    >
+                      <Input
+                        ref={refs.spletna_stran}
+                        name="spletna_stran"
+                        type="text"
+                        inputMode="url"
+                        autoComplete="url"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        placeholder="vasepodjetje.si"
+                        value={spletnaStran}
+                        onChange={(e) => setSpletnaStran(e.target.value)}
+                        onBlur={() => leave('spletna_stran', spletnaStran.trim() !== '')}
+                      />
+                    </Field>
+                    <Field label="E-naslov" hint="Na ta naslov pošljemo potrditev." error={shown('email')}>
+                      <Input
+                        ref={refs.email}
+                        name="email"
+                        type="email"
+                        inputMode="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        onBlur={() => leave('email', email.trim() !== '')}
+                      />
+                    </Field>
+
+                    {/* Honeypot for bots: hidden from people and from screen readers. */}
+                    <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
+                      <label>
+                        Pustite prazno
+                        <input
+                          tabIndex={-1}
+                          autoComplete="off"
+                          name="website_hp"
+                          value={honeypot}
+                          onChange={(e) => setHoneypot(e.target.value)}
+                        />
+                      </label>
+                    </div>
+
+                    <div>
+                      <Checkbox
+                        ref={refs.soglasje}
+                        name="soglasje"
+                        checked={soglasje}
+                        onChange={(e) => setSoglasje(e.target.checked)}
+                        aria-invalid={shown('soglasje') ? true : undefined}
+                        label={
+                          <>
+                            Strinjam se s{' '}
+                            <Link className={TEXT_LINK} to="/pogoji" target="_blank">
+                              pogoji uporabe
+                            </Link>
+                            , vključno s{' '}
+                            <Link className={TEXT_LINK} to="/pogoji" target="_blank">
+                              pogodbo o obdelavi podatkov
+                            </Link>
+                            , in s{' '}
+                            <Link className={TEXT_LINK} to="/zasebnost" target="_blank">
+                              politiko zasebnosti
+                            </Link>
+                            .
+                          </>
+                        }
+                        description="Podatke hranimo na strežniku v Nemčiji (EU). Seznam obdelovalcev je na strani Podizvajalci."
+                      />
+                      {shown('soglasje') ? (
+                        <p className="mt-1 text-sm text-danger" role="alert">
+                          {shown('soglasje')}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {send.error ? (
+                      <Notice size="sm" tone="danger">
+                        {send.error}
+                      </Notice>
+                    ) : null}
+                    <Button type="submit" variant="primary" loading={send.pending} block>
+                      Pošljite prijavo
+                    </Button>
+                  </form>
+                </CardBody>
+                <CardFooter className="justify-start rounded-b-lg bg-surface-2 text-sm text-fg-muted">
+                  <p>Prijava je brezplačna in vas ne obvezuje k naročnini.</p>
+                </CardFooter>
+              </Card>
+            )}
           </div>
 
-          <aside aria-label="Kaj sledi po registraciji" className="min-w-0">
+          <aside aria-label="Kaj sledi po prijavi" className="min-w-0">
             <Card>
               <CardHeader
-                title="Kaj sledi po registraciji"
-                description="V aplikaciji pomočnika imenujemo agent. Nastavitev lahko prekinete in nadaljujete pozneje."
+                title="Kaj sledi po prijavi"
+                description="Oglasimo se vam, nato v petih korakih skupaj nastavimo pomočnika."
                 divider
               />
               <StepList

@@ -275,6 +275,47 @@ export async function logout(): Promise<void> {
   setState((prev) => ({ ...prev, session: { ...LOGGED_OUT_SESSION } }));
 }
 
+export interface SignupInput {
+  ime: string;
+  podjetje: string;
+  email: string;
+  /** may be empty */
+  spletna_stran: string;
+  /** must be true: the person ticked the consent box */
+  soglasje: boolean;
+  /** version of the legal texts the person agreed to */
+  soglasje_verzija: string;
+  /** honeypot — always empty for people */
+  website_hp: string;
+}
+
+/**
+ * The one REAL server call of stage 1: sends a sign-up to the Agentka server (POST /api/prijava),
+ * which saves it in the EU and e-mails the owner and the visitor. Field errors come back as one
+ * finished sentence (the first one).
+ */
+export async function submitSignup(input: SignupInput): Promise<true> {
+  let res: Response;
+  try {
+    res = await fetch('/api/prijava', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    throw new ApiError('invalid', 'Povezava s strežnikom ni uspela. Preverite internetno povezavo in poskusite znova.');
+  }
+  let body: { ok?: boolean; message?: string; errors?: Record<string, string> } = {};
+  try {
+    body = await res.json();
+  } catch {
+    // not JSON (e.g. the static preview without a server)
+  }
+  if (res.ok && body.ok) return true;
+  const first = body.errors ? Object.values(body.errors)[0] : undefined;
+  throw new ApiError('invalid', first || body.message || 'Prijave ni bilo mogoče poslati. Poskusite znova.');
+}
+
 export interface RegisterInput {
   /** the person's own first and last name */
   ownerName: string;

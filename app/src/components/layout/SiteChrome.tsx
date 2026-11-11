@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { BRAND } from '@/brand';
 import { useSession } from '@/data/api';
 import logo from '@/assets/agentka-logo.png';
+import { COMPANY } from '@/pages/public/legal/content';
 import '@/pages/public/landing/landing.css';
 
 /**
@@ -62,11 +63,16 @@ export function SiteFooter() {
     <div className="lp lp-chrome-foot">
       <footer className="footer">
         <div className="container footer-inner">
-          <div>© {new Date().getFullYear()} {BRAND}</div>
+          <div>
+            © {new Date().getFullYear()} {BRAND} · {COMPANY.name}, {COMPANY.address}, davčna št. {COMPANY.taxId}, matična št.{' '}
+            {COMPANY.regNo} · <a href={`mailto:${COMPANY.email}`}>{COMPANY.email}</a>
+          </div>
           <div className="footer-links">
             <Link to="/cenik">Cenik</Link>
-            <Link to="/prijava">Prijava</Link>
             <Link to="/registracija">Registracija</Link>
+            <Link to="/pogoji">Pogoji uporabe</Link>
+            <Link to="/zasebnost">Zasebnost</Link>
+            <Link to="/podizvajalci">Podizvajalci</Link>
           </div>
         </div>
       </footer>

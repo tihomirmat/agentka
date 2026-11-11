@@ -7,6 +7,7 @@ import Landing from '@/pages/public/Landing';
 import Pricing from '@/pages/public/Pricing';
 import Login from '@/pages/public/Login';
 import Register from '@/pages/public/Register';
+import { PrivacyPage, SubprocessorsPage, TermsPage } from '@/pages/public/legal/LegalPages';
 import Wizard from '@/pages/wizard/Wizard';
 import Overview from '@/pages/app/Overview';
 import Knowledge from '@/pages/app/Knowledge';
@@ -38,6 +39,9 @@ export const router = createHashRouter([
       { path: '/cenik', element: <Pricing /> },
       { path: '/prijava', element: <Login /> },
       { path: '/registracija', element: <Register /> },
+      { path: '/pogoji', element: <TermsPage /> },
+      { path: '/zasebnost', element: <PrivacyPage /> },
+      { path: '/podizvajalci', element: <SubprocessorsPage /> },
       { path: '*', element: <NotFound /> },
     ],
   },
